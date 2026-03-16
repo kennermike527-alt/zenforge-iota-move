@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XENFORGE — Built by Rules, Not Hype</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Sora:wght@500;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="bg-noise"></div>
+    <div class="orb orb-a"></div>
+    <div class="orb orb-b"></div>
+
+    <header class="hero wrap">
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <div class="hero-badge">XENFORGE · Participation-first tokenomics on IOTA</div>
+          <h1>XENFORGE</h1>
+          <p class="hero-tagline">Rules You Can Verify. Outcomes You Can Model.</p>
+          <p>
+            XENFORGE translates litepaper mechanics into clear, testable views:
+            what participants do, how rewards evolve with time, and where parameter choices can fail under stress.
+          </p>
+          <p class="hero-note">Reference baseline: XEN Litepaper v1.7 concepts, adapted for this IOTA build.</p>
+
+        </div>
+
+        <aside class="hero-stage">
+          <div id="stamp" class="stage-stamp">Loading simulation feed…</div>
+          <div class="stage-grid">
+            <article>
+              <div class="stage-label">Network Position</div>
+              <div id="heroFinalRank" class="stage-value">—</div>
+            </article>
+            <article>
+              <div class="stage-label">Realized Reward</div>
+              <div id="heroNet" class="stage-value">—</div>
+            </article>
+          </div>
+          <details class="compact-more">
+            <summary>More headline metrics</summary>
+            <div class="stage-grid extra">
+              <article>
+                <div class="stage-label">Potential Reward</div>
+                <div id="heroGross" class="stage-value">—</div>
+              </article>
+              <article>
+                <div class="stage-label">Matured Positions</div>
+                <div id="heroMatured" class="stage-value">—</div>
+              </article>
+            </div>
+          </details>
+        </aside>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section id="about" class="panel">
+        <h2>Three questions this project must answer</h2>
+        <p class="section-note">
+          If these three answers are weak, the design is weak — no matter how good the charts look.
+        </p>
+
+        <div class="grid three explain-grid">
+          <article class="explain-card">
+            <h3>1) What it’s trying to achieve</h3>
+            <p>
+              Build a fair participation token model where issuance comes from open rules and user timing,
+              not privileged pre-allocation or insider mint paths.
+            </p>
+          </article>
+
+          <article class="explain-card">
+            <h3>2) What participants actually do</h3>
+            <p>
+              Claim rank, choose a wait term, then claim inside the reward window.
+              You are explicitly trading time discipline for reward outcome.
+            </p>
+          </article>
+
+          <article class="explain-card">
+            <h3>3) How sustainability is tested</h3>
+            <p>
+              Run deterministic baseline + shock simulations (rank surges, late-claim waves, churn pressure)
+              and track drift, penalties, and concentration to catch fragile parameters before scale.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section id="mechanics" class="panel">
+        <h2>Participant flow (litepaper-aligned)</h2>
+        <div class="grid three explain-grid">
+          <article class="explain-card">
+            <h3>Step 1 — Claim rank</h3>
+            <p>Enter and lock a rank context that influences your reward difficulty.</p>
+          </article>
+          <article class="explain-card">
+            <h3>Step 2 — Select term</h3>
+            <p>Choose how long to wait. Longer terms generally shift rewards upward versus short-term claims.</p>
+          </article>
+          <article class="explain-card">
+            <h3>Step 3 — Claim within window</h3>
+            <p>Late claims are progressively penalized (pattern reaches 99% after 7 days late).</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="sustainability" class="panel">
+        <h2>Sustainability (mechanics-first)</h2>
+        <p class="section-note">This is rule-driven pressure, not a promise chart.</p>
+        <div class="grid three explain-grid">
+          <article class="explain-card">
+            <h3>What changes over time</h3>
+            <p>AMP declines daily, APY declines over protocol age, and EAA bonus declines as rank increases.</p>
+          </article>
+          <article class="explain-card">
+            <h3>What gets harder later</h3>
+            <p>Later participants generally face lower rank bonus and less favorable timing conditions than early disciplined claimers.</p>
+          </article>
+          <article class="explain-card">
+            <h3>How claim penalties enforce discipline</h3>
+            <p>Late claim penalties ramp aggressively and can reduce net rewards to near-zero territory.</p>
+          </article>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Days Late</th>
+                <th>Penalty %</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>0</td><td>0%</td></tr>
+              <tr><td>1</td><td>1%</td></tr>
+              <tr><td>2</td><td>3%</td></tr>
+              <tr><td>3</td><td>8%</td></tr>
+              <tr><td>4</td><td>17%</td></tr>
+              <tr><td>5</td><td>35%</td></tr>
+              <tr><td>6</td><td>72%</td></tr>
+              <tr><td>7+</td><td>99%</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="live" class="panel">
+        <div class="row between center">
+          <h2>
+            Protocol Metrics (current build)
+            <span class="info" tabindex="0">?<span class="tip">This section attempts live on-chain reads from configured RPC + protocol object. If unavailable, it falls back to simulation data and labels the source.</span></span>
+          </h2>
+          <small id="liveContext">default scenario</small>
+        </div>
+        <div id="kpis" class="kpi-grid"></div>
+        <details class="compact-more" open>
+          <summary>Metrics readback (source-tagged)</summary>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Metric</th>
+                  <th>Value</th>
+                  <th>Source</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Global rank / participant count</td>
+                  <td id="liveMetricRank">-</td>
+                  <td id="liveSourceRank">Simulation snapshot</td>
+                </tr>
+                <tr>
+                  <td>Max selectable term</td>
+                  <td id="liveMetricMaxTerm">-</td>
+                  <td id="liveSourceMaxTerm">Contract formula (computed from current rank)</td>
+                </tr>
+                <tr>
+                  <td>Current AMP</td>
+                  <td id="liveMetricAmp">-</td>
+                  <td id="liveSourceAmp">Simulation snapshot</td>
+                </tr>
+                <tr>
+                  <td>Current APY</td>
+                  <td id="liveMetricApy">-</td>
+                  <td id="liveSourceApy">Simulation snapshot</td>
+                </tr>
+                <tr>
+                  <td>Current claim-window / penalty state</td>
+                  <td id="liveMetricPenaltyState">Per-receipt only</td>
+                  <td>Contract logic (not a global singleton metric)</td>
+                </tr>
+                <tr>
+                  <td>Active mint receipts</td>
+                  <td id="liveMetricActiveMints">-</td>
+                  <td id="liveSourceActiveMints">Unavailable</td>
+                </tr>
+                <tr>
+                  <td>Active stake receipts</td>
+                  <td id="liveMetricActiveStakes">-</td>
+                  <td id="liveSourceActiveStakes">Unavailable</td>
+                </tr>
+                <tr>
+                  <td>Total token supply</td>
+                  <td id="liveMetricSupply">Not exposed here yet</td>
+                  <td id="liveSourceSupply">Unavailable in current product surface</td>
+                </tr>
+                <tr>
+                  <td>Contract package</td>
+                  <td id="liveMetricContract">Not pinned in current UI</td>
+                  <td id="liveSourceContract">Manual config needed</td>
+                </tr>
+                <tr>
+                  <td>Protocol object</td>
+                  <td id="liveMetricProtocol">Not pinned in current UI</td>
+                  <td id="liveSourceProtocol">Manual config needed</td>
+                </tr>
+                <tr>
+                  <td>RPC endpoint</td>
+                  <td id="liveMetricRpc">-</td>
+                  <td id="liveSourceRpc">Runtime config</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div id="kpisMore" class="kpi-grid kpi-grid-secondary"></div>
+        </details>
+      </section>
+
+      <section id="wallet" class="panel">
+        <h2>Wallet Connection (optional)</h2>
+        <p id="walletStatus" class="section-note">Detecting compatible IOTA wallets...</p>
+
+        <div class="wallet-controls">
+          <select id="walletSelect"></select>
+          <button id="connectWalletBtn" class="btn primary" type="button">Connect</button>
+          <button id="disconnectWalletBtn" class="btn ghost" type="button" disabled>Disconnect</button>
+        </div>
+
+        <p class="wallet-note">Connected address: <code id="connectedAddress">-</code></p>
+      </section>
+
+      <section id="curves" class="grid two">
+        <article class="panel">
+          <h3>
+            Degressive Fee Simulator (policy model)
+            <span class="info" tabindex="0">?<span class="tip">Frontend policy calculator only. This fee model is not currently enforced on-chain in ZenForge contracts.</span></span>
+          </h3>
+
+          <div class="sim-controls">
+            <label>
+              Min fee (IOTA)
+              <input id="simMinFee" type="number" min="0" step="0.001" value="0.005" />
+            </label>
+            <label>
+              Max fee (IOTA)
+              <input id="simMaxFee" type="number" min="0" step="0.001" value="0.05" />
+            </label>
+          </div>
+
+          <div class="sim-controls sim-controls-three">
+            <label>
+              Current global rank
+              <input id="simGlobalRank" type="number" min="1" step="1" value="100000" />
+            </label>
+            <label>
+              Your claim rank
+              <input id="simUserRank" type="number" min="1" step="1" value="90000" />
+            </label>
+            <label>
+              Your term (days)
+              <input id="simTermDays" type="number" min="1" max="365" step="1" value="100" />
+            </label>
+          </div>
+
+          <p id="simSummary" class="section-note">Loading fee simulation...</p>
+          <p id="rankSummary" class="section-note">Loading rank bonus estimate...</p>
+          <p class="wallet-note">Fee destination (Death Wallet): <code id="deathWalletAddress">TBD (pending publish)</code></p>
+
+          <div id="feeBreakdown" class="kpi-grid kpi-grid-secondary"></div>
+          <p id="feeMinNote" class="section-note">Minimum-fee term in current model: calculating...</p>
+          <p id="feeSelectableNote" class="section-note">Selectable-term check: calculating...</p>
+        </article>
+
+        <article class="panel">
+          <h3>
+            Scenario Comparison (numbers)
+            <span class="info" tabindex="0">?<span class="tip">Useful side-by-side numeric view of each scenario versus default.</span></span>
+          </h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Scenario</th>
+                  <th>Net Reward</th>
+                  <th>Stake Reward</th>
+                  <th>Avg Penalty</th>
+                  <th>Drift vs Default</th>
+                </tr>
+              </thead>
+              <tbody id="scenarioRows"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel">
+        <details class="compact-more">
+          <summary>Top Reward Outcomes (sample from default scenario)</summary>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>cRank</th>
+                  <th>Net Reward</th>
+                  <th>Gross Reward</th>
+                  <th>Penalty %</th>
+                  <th>Settle Day</th>
+                </tr>
+              </thead>
+              <tbody id="claimsRows"></tbody>
+            </table>
+          </div>
+        </details>
+      </section>
+
+      <section id="faq" class="panel">
+        <h2>XEN FAQ & Primer</h2>
+        <p class="risk-banner">⚠️ This project is unaudited and experimental. Use at your own risk.</p>
+        <div class="faq-list">
+          <details class="faq-item" open>
+            <summary>Is this project audited?</summary>
+            <p>
+              No. This project is currently unaudited and experimental. Treat all smart-contract and execution flows as high risk.
+            </p>
+          </details>
+
+          <details class="faq-item">
+            <summary>Is this a 1:1 copy of XEN Ethereum?</summary>
+            <p>
+              No. XENFORGE follows core litepaper principles (participation-driven rewards, term-based claiming, progressive penalties)
+              but is adapted to an IOTA implementation and tooling stack.
+            </p>
+          </details>
+
+          <details class="faq-item">
+            <summary>What reward logic is this based on?</summary>
+            <p>
+              Litepaper-style reward mechanics combine rank delta, selected term, and time-dependent factors (AMP/EAA).
+              This site explains the behavior and simulates outcomes; exact on-chain implementation can differ by deployment version.
+            </p>
+          </details>
+
+          <details class="faq-item">
+            <summary>Can I see my rank and early-rank bonus?</summary>
+            <p>
+              Yes. In the Degressive Fee Simulator, set current global rank and your claim rank.
+              The page shows your rank delta, EAA-style early-rank bonus, and relative score versus a later (+100k rank) cohort.
+            </p>
+          </details>
+
+          <details class="faq-item">
+            <summary>Why is claiming time-critical?</summary>
+            <p>
+              In the litepaper model, late claim penalties rise progressively and hit 99% after 7 days late.
+              The economic intent is to prevent invisible-claim ladders from being dumped at once.
+            </p>
+          </details>
+
+          <details class="faq-item">
+            <summary>What are “Scenario Outcomes” and “Difference vs default”?</summary>
+            <p>
+              Scenario outcomes are controlled what-if simulations. Difference vs default measures how far a stress case drifts
+              from baseline behavior. Large persistent drift is a warning that parameters may need retuning.
+            </p>
+          </details>
+
+          <details class="faq-item">
+            <summary>Where do mint fees go?</summary>
+            <p>
+              Important: mint-fee routing shown here is currently a policy simulator only.
+              ZenForge on-chain contracts in this build do not yet enforce mint-fee collection.
+            </p>
+          </details>
+
+          <details class="faq-item">
+            <summary>Does this include term limits and claim-window penalties?</summary>
+            <p>
+              Yes in principle: the model follows litepaper behavior where term choice, claim timing, and late-window penalties
+              strongly affect net outcome. Implementation details may differ by contract revision.
+            </p>
+          </details>
+
+          <details class="faq-item">
+            <summary>Does this simulator include staking APY logic?</summary>
+            <p>
+              Not yet as a first-class chart. Current focus is claim dynamics, degressive fee policy, and stress resilience.
+              Staking/APY views can be added next as a dedicated module.
+            </p>
+          </details>
+
+          <details class="faq-item">
+            <summary>Are these live on-chain metrics?</summary>
+            <p>
+              No. These are deterministic simulation artifacts used for design validation and strategy analysis.
+            </p>
+          </details>
+
+          <details class="faq-item">
+            <summary>How do I refresh data and connect wallet?</summary>
+            <p>
+              Refresh data with <code>node xen-iota-move/scripts/build-web-data.mjs</code>. Wallet connect/disconnect is in the Wallet Connection section.
+            </p>
+          </details>
+        </div>
+      </section>
+
+      <section id="dev-tools" class="panel dev-panel">
+        <details>
+          <summary>Builder / Back-office tools</summary>
+          <p class="dev-note">For internal validation workflows. Hidden by default so the main experience stays user-facing.</p>
+          <div class="cmd">node xen-iota-move/scripts/simulate-tokenomics.mjs --assert-invariants --check-baseline</div>
+          <div class="cmd">node xen-iota-move/scripts/run-attack-pack.mjs --check-baselines</div>
+          <div class="cmd">node xen-iota-move/scripts/build-web-data.mjs</div>
+          <div class="cmd">iota move test --skip-fetch-latest-git-deps</div>
+        </details>
+      </section>
+    </main>
+
+    <footer class="wrap footer">XENFORGE · built by rules, not hype · data from local simulation artifacts</footer>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

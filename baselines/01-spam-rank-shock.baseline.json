@@ -1,0 +1,336 @@
+{
+  "schemaVersion": 1,
+  "scenarioName": "attack-spam-rank-shock",
+  "finalGlobalRank": 21,
+  "totals": {
+    "claimCount": 21,
+    "stakeCount": 0,
+    "grossClaimReward": 1283582,
+    "netClaimReward": 867782,
+    "totalStakeReward": 0
+  },
+  "claims": [
+    {
+      "user": "victim",
+      "claimDay": 0,
+      "termDays": 90,
+      "settleDay": 95,
+      "cRank": 1,
+      "rankDelta": 20,
+      "penaltyPct": 35,
+      "grossReward": 1188000,
+      "netReward": 772200
+    },
+    {
+      "user": "bot01",
+      "claimDay": 1,
+      "termDays": 1,
+      "settleDay": 2,
+      "cRank": 2,
+      "rankDelta": 5,
+      "penaltyPct": 0,
+      "grossReward": 6597,
+      "netReward": 6597
+    },
+    {
+      "user": "bot02",
+      "claimDay": 1,
+      "termDays": 1,
+      "settleDay": 2,
+      "cRank": 3,
+      "rankDelta": 4,
+      "penaltyPct": 0,
+      "grossReward": 6597,
+      "netReward": 6597
+    },
+    {
+      "user": "bot03",
+      "claimDay": 1,
+      "termDays": 1,
+      "settleDay": 2,
+      "cRank": 4,
+      "rankDelta": 3,
+      "penaltyPct": 0,
+      "grossReward": 3298,
+      "netReward": 3298
+    },
+    {
+      "user": "bot04",
+      "claimDay": 2,
+      "termDays": 1,
+      "settleDay": 3,
+      "cRank": 5,
+      "rankDelta": 5,
+      "penaltyPct": 0,
+      "grossReward": 6595,
+      "netReward": 6595
+    },
+    {
+      "user": "bot05",
+      "claimDay": 2,
+      "termDays": 1,
+      "settleDay": 3,
+      "cRank": 6,
+      "rankDelta": 4,
+      "penaltyPct": 0,
+      "grossReward": 6595,
+      "netReward": 6595
+    },
+    {
+      "user": "bot06",
+      "claimDay": 2,
+      "termDays": 1,
+      "settleDay": 3,
+      "cRank": 7,
+      "rankDelta": 3,
+      "penaltyPct": 0,
+      "grossReward": 3297,
+      "netReward": 3297
+    },
+    {
+      "user": "bot07",
+      "claimDay": 3,
+      "termDays": 1,
+      "settleDay": 4,
+      "cRank": 8,
+      "rankDelta": 5,
+      "penaltyPct": 0,
+      "grossReward": 6593,
+      "netReward": 6593
+    },
+    {
+      "user": "bot08",
+      "claimDay": 3,
+      "termDays": 1,
+      "settleDay": 4,
+      "cRank": 9,
+      "rankDelta": 4,
+      "penaltyPct": 0,
+      "grossReward": 6593,
+      "netReward": 6593
+    },
+    {
+      "user": "bot09",
+      "claimDay": 3,
+      "termDays": 1,
+      "settleDay": 4,
+      "cRank": 10,
+      "rankDelta": 3,
+      "penaltyPct": 0,
+      "grossReward": 3296,
+      "netReward": 3296
+    },
+    {
+      "user": "bot10",
+      "claimDay": 4,
+      "termDays": 1,
+      "settleDay": 5,
+      "cRank": 11,
+      "rankDelta": 5,
+      "penaltyPct": 0,
+      "grossReward": 6591,
+      "netReward": 6591
+    },
+    {
+      "user": "bot11",
+      "claimDay": 4,
+      "termDays": 1,
+      "settleDay": 5,
+      "cRank": 12,
+      "rankDelta": 4,
+      "penaltyPct": 0,
+      "grossReward": 6591,
+      "netReward": 6591
+    },
+    {
+      "user": "bot12",
+      "claimDay": 4,
+      "termDays": 1,
+      "settleDay": 5,
+      "cRank": 13,
+      "rankDelta": 3,
+      "penaltyPct": 0,
+      "grossReward": 3295,
+      "netReward": 3295
+    },
+    {
+      "user": "bot13",
+      "claimDay": 5,
+      "termDays": 1,
+      "settleDay": 6,
+      "cRank": 14,
+      "rankDelta": 5,
+      "penaltyPct": 0,
+      "grossReward": 6589,
+      "netReward": 6589
+    },
+    {
+      "user": "bot14",
+      "claimDay": 5,
+      "termDays": 1,
+      "settleDay": 6,
+      "cRank": 15,
+      "rankDelta": 4,
+      "penaltyPct": 0,
+      "grossReward": 6589,
+      "netReward": 6589
+    },
+    {
+      "user": "bot15",
+      "claimDay": 5,
+      "termDays": 1,
+      "settleDay": 6,
+      "cRank": 16,
+      "rankDelta": 3,
+      "penaltyPct": 0,
+      "grossReward": 3294,
+      "netReward": 3294
+    },
+    {
+      "user": "bot16",
+      "claimDay": 6,
+      "termDays": 1,
+      "settleDay": 7,
+      "cRank": 17,
+      "rankDelta": 4,
+      "penaltyPct": 0,
+      "grossReward": 6586,
+      "netReward": 6586
+    },
+    {
+      "user": "bot17",
+      "claimDay": 6,
+      "termDays": 1,
+      "settleDay": 7,
+      "cRank": 18,
+      "rankDelta": 3,
+      "penaltyPct": 0,
+      "grossReward": 3293,
+      "netReward": 3293
+    },
+    {
+      "user": "bot18",
+      "claimDay": 6,
+      "termDays": 1,
+      "settleDay": 7,
+      "cRank": 19,
+      "rankDelta": 2,
+      "penaltyPct": 0,
+      "grossReward": 3293,
+      "netReward": 3293
+    },
+    {
+      "user": "bot19",
+      "claimDay": 7,
+      "termDays": 1,
+      "settleDay": 8,
+      "cRank": 20,
+      "rankDelta": 1,
+      "penaltyPct": 0,
+      "grossReward": 0,
+      "netReward": 0
+    },
+    {
+      "user": "bot20",
+      "claimDay": 7,
+      "termDays": 1,
+      "settleDay": 8,
+      "cRank": 21,
+      "rankDelta": 1,
+      "penaltyPct": 0,
+      "grossReward": 0,
+      "netReward": 0
+    }
+  ],
+  "stakes": [],
+  "checkpoints": [
+    {
+      "day": 0,
+      "globalRank": 1,
+      "amp": 3000,
+      "apyBps": 2000,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 1,
+      "globalRank": 4,
+      "amp": 2999,
+      "apyBps": 2000,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 7,
+      "globalRank": 21,
+      "amp": 2993,
+      "apyBps": 2000,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 14,
+      "globalRank": 21,
+      "amp": 2986,
+      "apyBps": 2000,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 30,
+      "globalRank": 21,
+      "amp": 2970,
+      "apyBps": 2000,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 60,
+      "globalRank": 21,
+      "amp": 2940,
+      "apyBps": 2000,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 90,
+      "globalRank": 21,
+      "amp": 2910,
+      "apyBps": 1900,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 120,
+      "globalRank": 21,
+      "amp": 2880,
+      "apyBps": 1900,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 180,
+      "globalRank": 21,
+      "amp": 2820,
+      "apyBps": 1800,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 270,
+      "globalRank": 21,
+      "amp": 2730,
+      "apyBps": 1700,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 365,
+      "globalRank": 21,
+      "amp": 2635,
+      "apyBps": 1600,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "attack-late-claim-wave",
+  "claims": [
+    { "user": "u1", "day": 0, "termDays": 30, "settleDay": 30 },
+    { "user": "u2", "day": 1, "termDays": 30, "settleDay": 33 },
+    { "user": "u3", "day": 2, "termDays": 30, "settleDay": 36 },
+    { "user": "u4", "day": 3, "termDays": 30, "settleDay": 40 },
+    { "user": "u5", "day": 4, "termDays": 30, "settleDay": 45 },
+    { "user": "u6", "day": 5, "termDays": 30, "settleDay": 51 },
+    { "user": "u7", "day": 6, "termDays": 30, "settleDay": 58 },
+    { "user": "u8", "day": 7, "termDays": 30, "settleDay": 80 },
+    { "user": "u9", "day": 8, "termDays": 30, "settleDay": 90 }
+  ],
+  "stakes": []
+}

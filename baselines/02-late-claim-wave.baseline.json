@@ -1,0 +1,204 @@
+{
+  "schemaVersion": 1,
+  "scenarioName": "attack-late-claim-wave",
+  "finalGlobalRank": 9,
+  "totals": {
+    "claimCount": 9,
+    "stakeCount": 0,
+    "grossClaimReward": 1285977,
+    "netClaimReward": 659156,
+    "totalStakeReward": 0
+  },
+  "claims": [
+    {
+      "user": "u1",
+      "claimDay": 0,
+      "termDays": 30,
+      "settleDay": 30,
+      "cRank": 1,
+      "rankDelta": 8,
+      "penaltyPct": 0,
+      "grossReward": 297000,
+      "netReward": 297000
+    },
+    {
+      "user": "u2",
+      "claimDay": 1,
+      "termDays": 30,
+      "settleDay": 33,
+      "cRank": 2,
+      "rankDelta": 7,
+      "penaltyPct": 3,
+      "grossReward": 197934,
+      "netReward": 191995
+    },
+    {
+      "user": "u3",
+      "claimDay": 2,
+      "termDays": 30,
+      "settleDay": 36,
+      "cRank": 3,
+      "rankDelta": 6,
+      "penaltyPct": 17,
+      "grossReward": 197868,
+      "netReward": 164230
+    },
+    {
+      "user": "u4",
+      "claimDay": 3,
+      "termDays": 30,
+      "settleDay": 40,
+      "cRank": 4,
+      "rankDelta": 5,
+      "penaltyPct": 99,
+      "grossReward": 197802,
+      "netReward": 1978
+    },
+    {
+      "user": "u5",
+      "claimDay": 4,
+      "termDays": 30,
+      "settleDay": 45,
+      "cRank": 5,
+      "rankDelta": 4,
+      "penaltyPct": 99,
+      "grossReward": 197736,
+      "netReward": 1977
+    },
+    {
+      "user": "u6",
+      "claimDay": 5,
+      "termDays": 30,
+      "settleDay": 51,
+      "cRank": 6,
+      "rankDelta": 3,
+      "penaltyPct": 99,
+      "grossReward": 98835,
+      "netReward": 988
+    },
+    {
+      "user": "u7",
+      "claimDay": 6,
+      "termDays": 30,
+      "settleDay": 58,
+      "cRank": 7,
+      "rankDelta": 2,
+      "penaltyPct": 99,
+      "grossReward": 98802,
+      "netReward": 988
+    },
+    {
+      "user": "u8",
+      "claimDay": 7,
+      "termDays": 30,
+      "settleDay": 80,
+      "cRank": 8,
+      "rankDelta": 1,
+      "penaltyPct": 99,
+      "grossReward": 0,
+      "netReward": 0
+    },
+    {
+      "user": "u9",
+      "claimDay": 8,
+      "termDays": 30,
+      "settleDay": 90,
+      "cRank": 9,
+      "rankDelta": 1,
+      "penaltyPct": 99,
+      "grossReward": 0,
+      "netReward": 0
+    }
+  ],
+  "stakes": [],
+  "checkpoints": [
+    {
+      "day": 0,
+      "globalRank": 1,
+      "amp": 3000,
+      "apyBps": 2000,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 1,
+      "globalRank": 2,
+      "amp": 2999,
+      "apyBps": 2000,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 7,
+      "globalRank": 8,
+      "amp": 2993,
+      "apyBps": 2000,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 14,
+      "globalRank": 9,
+      "amp": 2986,
+      "apyBps": 2000,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 30,
+      "globalRank": 9,
+      "amp": 2970,
+      "apyBps": 2000,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 60,
+      "globalRank": 9,
+      "amp": 2940,
+      "apyBps": 2000,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 90,
+      "globalRank": 9,
+      "amp": 2910,
+      "apyBps": 1900,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 120,
+      "globalRank": 9,
+      "amp": 2880,
+      "apyBps": 1900,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 180,
+      "globalRank": 9,
+      "amp": 2820,
+      "apyBps": 1800,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 270,
+      "globalRank": 9,
+      "amp": 2730,
+      "apyBps": 1700,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 365,
+      "globalRank": 9,
+      "amp": 2635,
+      "apyBps": 1600,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    }
+  ]
+}

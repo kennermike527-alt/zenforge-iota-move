@@ -1,0 +1,15 @@
+{
+  "name": "attack-stake-churn-pressure",
+  "claims": [
+    { "user": "seed", "day": 0, "termDays": 30, "settleDay": 35 }
+  ],
+  "stakes": [
+    { "user": "s1", "day": 5, "principal": 100000, "termDays": 30, "withdrawDay": 10 },
+    { "user": "s2", "day": 6, "principal": 100000, "termDays": 30, "withdrawDay": 11 },
+    { "user": "s3", "day": 7, "principal": 100000, "termDays": 30, "withdrawDay": 12 },
+    { "user": "s4", "day": 8, "principal": 100000, "termDays": 30, "withdrawDay": 38 },
+    { "user": "s5", "day": 9, "principal": 100000, "termDays": 30, "withdrawDay": 39 },
+    { "user": "s6", "day": 10, "principal": 500000, "termDays": 180, "withdrawDay": 220 },
+    { "user": "s7", "day": 12, "principal": 500000, "termDays": 365, "withdrawDay": 400 }
+  ]
+}

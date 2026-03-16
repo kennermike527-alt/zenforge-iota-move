@@ -1,0 +1,344 @@
+{
+  "generatedAt": "2026-03-16T05:15:07.202Z",
+  "defaultScenario": {
+    "name": "default",
+    "reportDir": "sim-2026-03-12T20-51-24-791Z",
+    "sourceGeneratedAt": "2026-03-12T20:51:24.792Z",
+    "finalGlobalRank": 7,
+    "totals": {
+      "claims": 7,
+      "stakes": 2,
+      "grossClaimReward": 1149986,
+      "netClaimReward": 910208,
+      "totalStakeReward": 1561,
+      "maturedStakes": 1
+    },
+    "timelineSample": [
+      {
+        "day": 0,
+        "globalRank": 1,
+        "amp": 3000,
+        "apyBps": 2000,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 13,
+        "globalRank": 4,
+        "amp": 2987,
+        "apyBps": 2000,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 26,
+        "globalRank": 5,
+        "amp": 2974,
+        "apyBps": 2000,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 39,
+        "globalRank": 5,
+        "amp": 2961,
+        "apyBps": 2000,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 52,
+        "globalRank": 6,
+        "amp": 2948,
+        "apyBps": 2000,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 65,
+        "globalRank": 7,
+        "amp": 2935,
+        "apyBps": 2000,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 78,
+        "globalRank": 7,
+        "amp": 2922,
+        "apyBps": 2000,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 91,
+        "globalRank": 7,
+        "amp": 2909,
+        "apyBps": 1900,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 104,
+        "globalRank": 7,
+        "amp": 2896,
+        "apyBps": 1900,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 117,
+        "globalRank": 7,
+        "amp": 2883,
+        "apyBps": 1900,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 130,
+        "globalRank": 7,
+        "amp": 2870,
+        "apyBps": 1900,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 143,
+        "globalRank": 7,
+        "amp": 2857,
+        "apyBps": 1900,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 156,
+        "globalRank": 7,
+        "amp": 2844,
+        "apyBps": 1900,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 169,
+        "globalRank": 7,
+        "amp": 2831,
+        "apyBps": 1900,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 182,
+        "globalRank": 7,
+        "amp": 2818,
+        "apyBps": 1800,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 195,
+        "globalRank": 7,
+        "amp": 2805,
+        "apyBps": 1800,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 208,
+        "globalRank": 7,
+        "amp": 2792,
+        "apyBps": 1800,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 221,
+        "globalRank": 7,
+        "amp": 2779,
+        "apyBps": 1800,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 234,
+        "globalRank": 7,
+        "amp": 2766,
+        "apyBps": 1800,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 247,
+        "globalRank": 7,
+        "amp": 2753,
+        "apyBps": 1800,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 260,
+        "globalRank": 7,
+        "amp": 2740,
+        "apyBps": 1800,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 273,
+        "globalRank": 7,
+        "amp": 2727,
+        "apyBps": 1700,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 286,
+        "globalRank": 7,
+        "amp": 2714,
+        "apyBps": 1700,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 299,
+        "globalRank": 7,
+        "amp": 2701,
+        "apyBps": 1700,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 312,
+        "globalRank": 7,
+        "amp": 2688,
+        "apyBps": 1700,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 325,
+        "globalRank": 7,
+        "amp": 2675,
+        "apyBps": 1700,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 338,
+        "globalRank": 7,
+        "amp": 2662,
+        "apyBps": 1700,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 351,
+        "globalRank": 7,
+        "amp": 2649,
+        "apyBps": 1700,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 364,
+        "globalRank": 7,
+        "amp": 2636,
+        "apyBps": 1600,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      },
+      {
+        "day": 365,
+        "globalRank": 7,
+        "amp": 2635,
+        "apyBps": 1600,
+        "eaaBpsAtCurrentRank": 1000,
+        "maxTermDaysAtCurrentRank": 100
+      }
+    ],
+    "topClaims": [
+      {
+        "user": "alice",
+        "cRank": 1,
+        "netReward": 660000,
+        "grossReward": 660000,
+        "penaltyPct": 0,
+        "settleDay": 100
+      },
+      {
+        "user": "dave",
+        "cRank": 4,
+        "netReward": 128271,
+        "grossReward": 197340,
+        "penaltyPct": 35,
+        "settleDay": 75
+      },
+      {
+        "user": "bob",
+        "cRank": 2,
+        "netReward": 82142,
+        "grossReward": 98967,
+        "penaltyPct": 17,
+        "settleDay": 35
+      },
+      {
+        "user": "carol",
+        "cRank": 3,
+        "netReward": 38320,
+        "grossReward": 46169,
+        "penaltyPct": 17,
+        "settleDay": 20
+      },
+      {
+        "user": "erin",
+        "cRank": 5,
+        "netReward": 1475,
+        "grossReward": 147510,
+        "penaltyPct": 99,
+        "settleDay": 120
+      },
+      {
+        "user": "frank",
+        "cRank": 6,
+        "netReward": 0,
+        "grossReward": 0,
+        "penaltyPct": 99,
+        "settleDay": 140
+      }
+    ]
+  },
+  "attackCards": [
+    {
+      "scenarioName": "attack-spam-rank-shock",
+      "generatedAt": "2026-03-13T06:37:05.820Z",
+      "claims": 21,
+      "stakes": 0,
+      "totalGross": 1283582,
+      "totalNet": 867782,
+      "totalStakeReward": 0,
+      "avgPenalty": 1.67,
+      "driftPct": -32.39
+    },
+    {
+      "scenarioName": "attack-late-claim-wave",
+      "generatedAt": "2026-03-13T06:37:05.876Z",
+      "claims": 9,
+      "stakes": 0,
+      "totalGross": 1285977,
+      "totalNet": 659156,
+      "totalStakeReward": 0,
+      "avgPenalty": 68.22,
+      "driftPct": -48.74
+    },
+    {
+      "scenarioName": "attack-stake-churn-pressure",
+      "generatedAt": "2026-03-13T06:37:05.929Z",
+      "claims": 1,
+      "stakes": 7,
+      "totalGross": 0,
+      "totalNet": 0,
+      "totalStakeReward": 152601,
+      "avgPenalty": 35,
+      "driftPct": 0
+    }
+  ]
+}

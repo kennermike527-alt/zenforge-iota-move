@@ -1,0 +1,203 @@
+{
+  "schemaVersion": 1,
+  "scenarioName": "default",
+  "finalGlobalRank": 7,
+  "totals": {
+    "claimCount": 7,
+    "stakeCount": 2,
+    "grossClaimReward": 1149986,
+    "netClaimReward": 910208,
+    "totalStakeReward": 1561
+  },
+  "claims": [
+    {
+      "user": "alice",
+      "claimDay": 0,
+      "termDays": 100,
+      "settleDay": 100,
+      "cRank": 1,
+      "rankDelta": 6,
+      "penaltyPct": 0,
+      "grossReward": 660000,
+      "netReward": 660000
+    },
+    {
+      "user": "bob",
+      "claimDay": 1,
+      "termDays": 30,
+      "settleDay": 35,
+      "cRank": 2,
+      "rankDelta": 3,
+      "penaltyPct": 17,
+      "grossReward": 98967,
+      "netReward": 82142
+    },
+    {
+      "user": "carol",
+      "claimDay": 2,
+      "termDays": 14,
+      "settleDay": 20,
+      "cRank": 3,
+      "rankDelta": 2,
+      "penaltyPct": 17,
+      "grossReward": 46169,
+      "netReward": 38320
+    },
+    {
+      "user": "dave",
+      "claimDay": 10,
+      "termDays": 60,
+      "settleDay": 75,
+      "cRank": 4,
+      "rankDelta": 3,
+      "penaltyPct": 35,
+      "grossReward": 197340,
+      "netReward": 128271
+    },
+    {
+      "user": "erin",
+      "claimDay": 20,
+      "termDays": 45,
+      "settleDay": 120,
+      "cRank": 5,
+      "rankDelta": 2,
+      "penaltyPct": 99,
+      "grossReward": 147510,
+      "netReward": 1475
+    },
+    {
+      "user": "frank",
+      "claimDay": 40,
+      "termDays": 90,
+      "settleDay": 140,
+      "cRank": 6,
+      "rankDelta": 1,
+      "penaltyPct": 99,
+      "grossReward": 0,
+      "netReward": 0
+    },
+    {
+      "user": "grace",
+      "claimDay": 55,
+      "termDays": 21,
+      "settleDay": 80,
+      "cRank": 7,
+      "rankDelta": 1,
+      "penaltyPct": 17,
+      "grossReward": 0,
+      "netReward": 0
+    }
+  ],
+  "stakes": [
+    {
+      "user": "alice",
+      "day": 120,
+      "termDays": 30,
+      "withdrawDay": 150,
+      "apyBps": 1900,
+      "matured": true,
+      "reward": 1561,
+      "payout": 101561
+    },
+    {
+      "user": "bob",
+      "day": 121,
+      "termDays": 30,
+      "withdrawDay": 130,
+      "apyBps": 1900,
+      "matured": false,
+      "reward": 0,
+      "payout": 100000
+    }
+  ],
+  "checkpoints": [
+    {
+      "day": 0,
+      "globalRank": 1,
+      "amp": 3000,
+      "apyBps": 2000,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 1,
+      "globalRank": 2,
+      "amp": 2999,
+      "apyBps": 2000,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 7,
+      "globalRank": 3,
+      "amp": 2993,
+      "apyBps": 2000,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 14,
+      "globalRank": 4,
+      "amp": 2986,
+      "apyBps": 2000,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 30,
+      "globalRank": 5,
+      "amp": 2970,
+      "apyBps": 2000,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 60,
+      "globalRank": 7,
+      "amp": 2940,
+      "apyBps": 2000,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 90,
+      "globalRank": 7,
+      "amp": 2910,
+      "apyBps": 1900,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 120,
+      "globalRank": 7,
+      "amp": 2880,
+      "apyBps": 1900,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 180,
+      "globalRank": 7,
+      "amp": 2820,
+      "apyBps": 1800,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 270,
+      "globalRank": 7,
+      "amp": 2730,
+      "apyBps": 1700,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    },
+    {
+      "day": 365,
+      "globalRank": 7,
+      "amp": 2635,
+      "apyBps": 1600,
+      "eaaBpsAtCurrentRank": 1000,
+      "maxTermDaysAtCurrentRank": 100
+    }
+  ]
+}

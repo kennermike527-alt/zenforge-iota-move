@@ -1,0 +1,13 @@
+{
+  "name": "custom-vector-check",
+  "claims": [
+    { "user": "alice", "day": 0, "termDays": 100, "settleDay": 100 },
+    { "user": "bob", "day": 1, "termDays": 30, "settleDay": 35 },
+    { "user": "carol", "day": 2, "termDays": 14, "settleDay": 20 },
+    { "user": "dave", "day": 10, "termDays": 60, "settleDay": 75 }
+  ],
+  "stakes": [
+    { "user": "alice", "day": 120, "principal": 100000, "termDays": 30, "withdrawDay": 150 },
+    { "user": "bob", "day": 121, "principal": 100000, "termDays": 30, "withdrawDay": 130 }
+  ]
+}

@@ -1,0 +1,9 @@
+[package]
+name = "xen_iota"
+version = "0.0.1"
+
+[dependencies]
+Iota = { git = "https://github.com/iotaledger/iota.git", subdir = "crates/iota-framework/packages/iota-framework", rev = "develop" }
+
+[addresses]
+xen_iota = "0x0"

@@ -1,0 +1,27 @@
+{
+  "name": "attack-spam-rank-shock",
+  "claims": [
+    { "user": "victim", "day": 0, "termDays": 90, "settleDay": 95 },
+    { "user": "bot01", "day": 1, "termDays": 1, "settleDay": 2 },
+    { "user": "bot02", "day": 1, "termDays": 1, "settleDay": 2 },
+    { "user": "bot03", "day": 1, "termDays": 1, "settleDay": 2 },
+    { "user": "bot04", "day": 2, "termDays": 1, "settleDay": 3 },
+    { "user": "bot05", "day": 2, "termDays": 1, "settleDay": 3 },
+    { "user": "bot06", "day": 2, "termDays": 1, "settleDay": 3 },
+    { "user": "bot07", "day": 3, "termDays": 1, "settleDay": 4 },
+    { "user": "bot08", "day": 3, "termDays": 1, "settleDay": 4 },
+    { "user": "bot09", "day": 3, "termDays": 1, "settleDay": 4 },
+    { "user": "bot10", "day": 4, "termDays": 1, "settleDay": 5 },
+    { "user": "bot11", "day": 4, "termDays": 1, "settleDay": 5 },
+    { "user": "bot12", "day": 4, "termDays": 1, "settleDay": 5 },
+    { "user": "bot13", "day": 5, "termDays": 1, "settleDay": 6 },
+    { "user": "bot14", "day": 5, "termDays": 1, "settleDay": 6 },
+    { "user": "bot15", "day": 5, "termDays": 1, "settleDay": 6 },
+    { "user": "bot16", "day": 6, "termDays": 1, "settleDay": 7 },
+    { "user": "bot17", "day": 6, "termDays": 1, "settleDay": 7 },
+    { "user": "bot18", "day": 6, "termDays": 1, "settleDay": 7 },
+    { "user": "bot19", "day": 7, "termDays": 1, "settleDay": 8 },
+    { "user": "bot20", "day": 7, "termDays": 1, "settleDay": 8 }
+  ],
+  "stakes": []
+}
