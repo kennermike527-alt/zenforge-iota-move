@@ -25,12 +25,19 @@ Default output:
 
 ## 3) Create GitHub repo + push
 
-Inside `tmp\zenforge-repo`:
+Option A (manual): inside `tmp\zenforge-repo`
 
 ```powershell
 git remote add origin https://github.com/<YOUR_USER>/<YOUR_REPO>.git
 git push -u origin main
 ```
+
+Option B (scripted):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File xen-iota-move/scripts/push-github.ps1 -RemoteUrl "https://github.com/<YOUR_USER>/<YOUR_REPO>.git"
+```
+
 
 ## 4) Optional post-push checks
 
