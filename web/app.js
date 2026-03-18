@@ -740,12 +740,17 @@ async function loadActiveMintReceipt(address, state) {
 function syncMintUiState() {
   const mintBtn = document.querySelector('#mintNowBtn');
   const claimBtn = document.querySelector('#claimMintBtn');
+  const claimRow = document.querySelector('#claimActionRow');
   const statusEl = document.querySelector('#mintTxStatus');
 
-  if (!mintBtn || !claimBtn || !statusEl) return;
+  if (!mintBtn || !claimBtn || !claimRow || !statusEl) return;
 
   const session = APP_STATE.walletSession;
   const receipt = APP_STATE.activeMintReceipt;
+
+  // Show claim action only when there is an actually claimable receipt.
+  const showClaimAction = Boolean(session && receipt && receipt.matured);
+  claimRow.hidden = !showClaimAction;
 
   if (!session) {
     mintBtn.disabled = true;
