@@ -274,6 +274,20 @@ h3 {
   margin: 10px 0 0;
 }
 
+.repo-line {
+  margin-top: 8px;
+}
+
+.repo-link {
+  color: #c9f4e5;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.repo-link:hover {
+  color: #e8fff6;
+}
+
 .risk {
   margin: 12px auto 0;
   width: fit-content;

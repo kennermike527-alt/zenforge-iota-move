@@ -2,6 +2,9 @@
 
 This project is prepared for GitHub export as far as possible without account credentials.
 
+Canonical public repository:
+- https://github.com/kennermike527-alt/zenforge-iota-move
+
 ## 1) Run local preflight
 
 ```powershell

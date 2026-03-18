@@ -2,6 +2,9 @@
 
 This package is a first-pass port of the XEN v1.7 litepaper mechanics onto IOTA Move.
 
+## Repository
+- GitHub: https://github.com/kennermike527-alt/zenforge-iota-move
+
 ## Location
 - `xen-iota-move/move/xen`
 
