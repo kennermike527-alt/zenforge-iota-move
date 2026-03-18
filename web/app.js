@@ -327,6 +327,69 @@ function setupToolTabs() {
   activate('mint');
 }
 
+function setupCursorFx() {
+  const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  if (!finePointer) return;
+
+  const dot = document.querySelector('#cursorDot');
+  const glow = document.querySelector('#cursorGlow');
+  const toggle = document.querySelector('#cursorToggle');
+  if (!dot || !glow || !toggle) return;
+
+  let enabled = localStorage.getItem('xenforgeCursorFx') !== 'off';
+  let x = window.innerWidth / 2;
+  let y = window.innerHeight / 2;
+  let gx = x;
+  let gy = y;
+
+  const apply = () => {
+    document.body.classList.toggle('cursor-fx-enabled', enabled);
+    toggle.textContent = `Cursor FX: ${enabled ? 'On' : 'Off'}`;
+  };
+
+  const move = (e) => {
+    x = e.clientX;
+    y = e.clientY;
+    if (enabled) {
+      dot.style.left = `${x}px`;
+      dot.style.top = `${y}px`;
+    }
+  };
+
+  const tick = () => {
+    if (enabled) {
+      gx += (x - gx) * 0.2;
+      gy += (y - gy) * 0.2;
+      glow.style.left = `${gx}px`;
+      glow.style.top = `${gy}px`;
+    }
+    requestAnimationFrame(tick);
+  };
+
+  const interactiveSel = 'a, button, input, select, textarea, summary, [role="button"]';
+  const wireInteractive = () => {
+    document.querySelectorAll(interactiveSel).forEach((el) => {
+      if (el.dataset.cursorFxBound) return;
+      el.dataset.cursorFxBound = '1';
+      el.addEventListener('mouseenter', () => glow.classList.add('active'));
+      el.addEventListener('mouseleave', () => glow.classList.remove('active'));
+      el.addEventListener('focus', () => glow.classList.add('active'));
+      el.addEventListener('blur', () => glow.classList.remove('active'));
+    });
+  };
+
+  toggle.addEventListener('click', () => {
+    enabled = !enabled;
+    localStorage.setItem('xenforgeCursorFx', enabled ? 'on' : 'off');
+    apply();
+  });
+
+  window.addEventListener('mousemove', move, { passive: true });
+  wireInteractive();
+  apply();
+  tick();
+}
+
 async function fetchOwnedObjects(address, maxPages = 4) {
   const query = { options: { showType: true, showContent: true } };
   const objects = [];
@@ -1022,6 +1085,7 @@ async function main() {
   renderFeeSimulator(state);
   renderStakingPreview(state);
   setupToolTabs();
+  setupCursorFx();
   setupMintUi(state);
   setupStakingUi(state);
 
