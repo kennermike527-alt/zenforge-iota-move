@@ -563,7 +563,8 @@ ul {
   flex-wrap: wrap;
 }
 
-#mintTxStatus:empty {
+#mintTxStatus:empty,
+#stakeTxStatus:empty {
   display: none;
 }
 

@@ -438,7 +438,7 @@ async function renderStakeList(address, state) {
 
   if (!address) {
     listEl.innerHTML = '<div class="stake-item">Connect wallet to view your stakes.</div>';
-    if (txStatus) txStatus.textContent = 'Connect wallet to enable staking.';
+    if (txStatus) txStatus.textContent = '';
     return;
   }
 
@@ -866,7 +866,7 @@ async function executeClaimRankTx(state) {
   }
   if (existing) {
     syncMintUiState();
-    if (statusEl) statusEl.textContent = 'Active mint receipt already exists. Claim current receipt before starting a new mint.';
+    if (statusEl) statusEl.textContent = 'Current contract allows one active mint receipt at a time. Claim current receipt, then mint again (unlimited cycles).';
     return;
   }
 
