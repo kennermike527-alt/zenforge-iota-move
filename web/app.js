@@ -29,7 +29,9 @@ const APP_STATE = {
   protocol: null,
   walletSession: null,
   activeMintReceipt: null,
+  activeMintReceipts: [],
   stakeCoins: [],
+  stakeReceipts: [],
 };
 
 function fmtDec(n, max = 6) {
@@ -434,11 +436,14 @@ async function fetchOwnedObjects(address, maxPages = 4) {
 async function renderStakeList(address, state) {
   const listEl = document.querySelector('#stakeList');
   const txStatus = document.querySelector('#stakeTxStatus');
+  const withdrawAllBtn = document.querySelector('#withdrawAllStakesBtn');
   if (!listEl) return;
 
   if (!address) {
+    APP_STATE.stakeReceipts = [];
     listEl.innerHTML = '<div class="stake-item">Connect wallet to view your stakes.</div>';
     if (txStatus) txStatus.textContent = '';
+    if (withdrawAllBtn) withdrawAllBtn.disabled = true;
     return;
   }
 
@@ -474,8 +479,11 @@ async function renderStakeList(address, state) {
         };
       });
 
+    APP_STATE.stakeReceipts = stakes;
+
     if (!stakes.length) {
       listEl.innerHTML = '<div class="stake-item">No active stake receipts found.</div>';
+      if (withdrawAllBtn) withdrawAllBtn.disabled = true;
       return;
     }
 
@@ -503,8 +511,13 @@ async function renderStakeList(address, state) {
         `;
       })
       .join('');
+
+    const maturedCount = stakes.filter((s) => s.matured && s.packageMatch && s.id && s.id !== '-').length;
+    if (withdrawAllBtn) withdrawAllBtn.disabled = maturedCount === 0;
   } catch (err) {
+    APP_STATE.stakeReceipts = [];
     listEl.innerHTML = `<div class="stake-item">Failed to load stakes: ${err?.message || err}</div>`;
+    if (withdrawAllBtn) withdrawAllBtn.disabled = true;
   }
 }
 
@@ -741,10 +754,73 @@ async function executeWithdrawTx(state, receiptId, triggerBtn) {
   }
 }
 
+async function executeWithdrawAllStakesTx(state) {
+  const session = APP_STATE.walletSession;
+  const statusEl = document.querySelector('#stakeTxStatus');
+  const withdrawAllBtn = document.querySelector('#withdrawAllStakesBtn');
+
+  if (!session?.wallet || !session?.account) {
+    if (statusEl) statusEl.textContent = 'Connect wallet first.';
+    return;
+  }
+
+  let receipts = APP_STATE.stakeReceipts || [];
+  if (!receipts.length) {
+    await renderStakeList(session.address, state);
+    receipts = APP_STATE.stakeReceipts || [];
+  }
+
+  const matured = receipts.filter((r) => r.matured && r.packageMatch && r.id && r.id !== '-');
+  if (!matured.length) {
+    if (statusEl) statusEl.textContent = 'No matured stakes available for withdraw.';
+    return;
+  }
+
+  try {
+    if (withdrawAllBtn) withdrawAllBtn.disabled = true;
+    if (statusEl) statusEl.textContent = `Preparing withdraw-all transaction for ${matured.length} stake(s)...`;
+
+    const { Transaction } = await import('https://esm.sh/@iota/iota-sdk/transactions');
+    const tx = new Transaction();
+
+    for (const receipt of matured) {
+      tx.moveCall({
+        target: `${state.packageId || CHAIN_CONFIG.packageId}::xen::withdraw`,
+        arguments: [
+          tx.object(CHAIN_CONFIG.protocolId),
+          tx.object(CHAIN_CONFIG.clockId),
+          tx.object(receipt.id),
+        ],
+      });
+    }
+
+    const signer = session.wallet.features?.['iota:signAndExecuteTransaction'];
+    if (!signer?.signAndExecuteTransaction) throw new Error('Wallet does not support signAndExecuteTransaction');
+
+    if (statusEl) statusEl.textContent = 'Awaiting wallet signature...';
+    const res = await signer.signAndExecuteTransaction({
+      transaction: tx,
+      account: session.account,
+      chain: session.chain || CHAIN_ID,
+      options: { showEffects: true },
+    });
+
+    if (statusEl) statusEl.textContent = `Withdraw-all submitted. Digest: ${res?.digest || 'submitted'}`;
+
+    await renderStakeCoinOptions(session.address, state);
+    await renderStakeList(session.address, state);
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `Withdraw-all failed: ${err?.message || err}`;
+  } finally {
+    if (withdrawAllBtn) withdrawAllBtn.disabled = false;
+  }
+}
+
 function setupStakingUi(state) {
   const refreshBtn = document.querySelector('#refreshStakeCoins');
   const stakeBtn = document.querySelector('#stakeNowBtn');
   const stakeAllBtn = document.querySelector('#stakeAllBtn');
+  const withdrawAllBtn = document.querySelector('#withdrawAllStakesBtn');
   const stakeList = document.querySelector('#stakeList');
 
   if (refreshBtn && !refreshBtn.dataset.bound) {
@@ -770,6 +846,13 @@ function setupStakingUi(state) {
     });
   }
 
+  if (withdrawAllBtn && !withdrawAllBtn.dataset.bound) {
+    withdrawAllBtn.dataset.bound = '1';
+    withdrawAllBtn.addEventListener('click', async () => {
+      await executeWithdrawAllStakesTx(state);
+    });
+  }
+
   if (stakeList && !stakeList.dataset.bound) {
     stakeList.dataset.bound = '1';
     stakeList.addEventListener('click', async (e) => {
@@ -784,26 +867,32 @@ function setupStakingUi(state) {
   }
 }
 
-async function loadActiveMintReceipt(address, state) {
-  if (!address) return null;
+async function loadMintReceipts(address, state) {
+  if (!address) return [];
   const packageId = state.packageId || CHAIN_CONFIG.packageId;
   const objects = await fetchOwnedObjects(address, 6);
-  const receipt = objects.find((o) => String(o?.data?.type || '').endsWith('::xen::MintReceipt'));
-  if (!receipt) return null;
 
-  const f = receipt?.data?.content?.fields || {};
-  const maturityMs = Number(f.maturity_ts_ms || 0);
-  const nowMs = Date.now();
+  return objects
+    .filter((o) => String(o?.data?.type || '').endsWith('::xen::MintReceipt'))
+    .map((receipt) => {
+      const f = receipt?.data?.content?.fields || {};
+      const maturityMs = Number(f.maturity_ts_ms || 0);
+      const nowMs = Date.now();
+      return {
+        id: f?.id?.id || receipt?.data?.objectId || '-',
+        cRank: Number(f.c_rank || 0),
+        termDays: Number(f.term_days || 0),
+        maturityMs,
+        ampAtClaim: Number(f.amp_at_claim || 0),
+        matured: nowMs >= maturityMs,
+        packageMatch: String(receipt?.data?.type || '').startsWith(String(packageId)),
+      };
+    });
+}
 
-  return {
-    id: f?.id?.id || receipt?.data?.objectId || '-',
-    cRank: Number(f.c_rank || 0),
-    termDays: Number(f.term_days || 0),
-    maturityMs,
-    ampAtClaim: Number(f.amp_at_claim || 0),
-    matured: nowMs >= maturityMs,
-    packageMatch: String(receipt?.data?.type || '').startsWith(String(packageId)),
-  };
+async function loadActiveMintReceipt(address, state) {
+  const all = await loadMintReceipts(address, state);
+  return all[0] || null;
 }
 
 function syncMintUiState() {
@@ -815,10 +904,11 @@ function syncMintUiState() {
   if (!mintBtn || !claimBtn || !claimRow || !statusEl) return;
 
   const session = APP_STATE.walletSession;
-  const receipt = APP_STATE.activeMintReceipt;
+  const receipts = APP_STATE.activeMintReceipts || [];
+  const claimable = receipts.filter((r) => r.matured && r.packageMatch && r.id && r.id !== '-');
 
-  // Show claim action only when there is an actually claimable receipt.
-  const showClaimAction = Boolean(session && receipt && receipt.matured);
+  // Show claim-all action only when there is at least one claimable receipt.
+  const showClaimAction = Boolean(session && claimable.length > 0);
   claimRow.hidden = !showClaimAction;
   claimRow.style.display = showClaimAction ? 'flex' : 'none';
   claimRow.setAttribute('aria-hidden', showClaimAction ? 'false' : 'true');
@@ -826,20 +916,15 @@ function syncMintUiState() {
   if (!session) {
     mintBtn.disabled = true;
     claimBtn.disabled = true;
+    claimBtn.textContent = 'Claim all mint rewards';
     statusEl.textContent = '';
     return;
   }
 
-  if (!receipt) {
-    mintBtn.disabled = false;
-    claimBtn.disabled = true;
-    statusEl.textContent = '';
-    return;
-  }
-
-  // Active mint exists -> prevent starting another mint until current receipt is claimed.
-  mintBtn.disabled = true;
-  claimBtn.disabled = !receipt.matured;
+  // Contract guard: one active mint at a time for this protocol object.
+  mintBtn.disabled = receipts.length > 0;
+  claimBtn.disabled = claimable.length === 0;
+  claimBtn.textContent = claimable.length > 1 ? `Claim all mint rewards (${claimable.length})` : 'Claim all mint rewards';
   statusEl.textContent = '';
 }
 
@@ -856,15 +941,16 @@ async function executeClaimRankTx(state) {
   if (!termInput) return;
 
   // Guard against duplicate active mints (on-chain abort code 0 / EActiveMintExists).
-  let existing = null;
+  let existingReceipts = [];
   try {
-    existing = await loadActiveMintReceipt(session.address, state);
-    APP_STATE.activeMintReceipt = existing;
+    existingReceipts = await loadMintReceipts(session.address, state);
+    APP_STATE.activeMintReceipts = existingReceipts;
+    APP_STATE.activeMintReceipt = existingReceipts[0] || null;
   } catch (err) {
     if (statusEl) statusEl.textContent = `Mint precheck failed: ${err?.message || err}`;
     return;
   }
-  if (existing) {
+  if (existingReceipts.length > 0) {
     syncMintUiState();
     if (statusEl) statusEl.textContent = 'Current contract allows one active mint receipt at a time. Claim current receipt, then mint again (unlimited cycles).';
     return;
@@ -925,33 +1011,34 @@ async function executeClaimMintRewardTx(state) {
   try {
     if (claimBtn) claimBtn.disabled = true;
 
-    let receipt = APP_STATE.activeMintReceipt;
-    if (!receipt) {
-      receipt = await loadActiveMintReceipt(session.address, state);
-      APP_STATE.activeMintReceipt = receipt;
+    let receipts = APP_STATE.activeMintReceipts || [];
+    if (!receipts.length) {
+      receipts = await loadMintReceipts(session.address, state);
+      APP_STATE.activeMintReceipts = receipts;
+      APP_STATE.activeMintReceipt = receipts[0] || null;
     }
-    if (!receipt) {
-      if (statusEl) statusEl.textContent = 'No active mint receipt found.';
-      return;
-    }
-    if (!receipt.matured) {
-      if (statusEl) statusEl.textContent = 'Mint receipt not matured yet.';
+
+    const claimable = receipts.filter((r) => r.matured && r.packageMatch && r.id && r.id !== '-');
+    if (!claimable.length) {
+      if (statusEl) statusEl.textContent = 'No claimable mint receipts found.';
       return;
     }
 
-    if (statusEl) statusEl.textContent = 'Preparing claim reward transaction...';
+    if (statusEl) statusEl.textContent = `Preparing claim-all transaction for ${claimable.length} receipt(s)...`;
 
     const { Transaction } = await import('https://esm.sh/@iota/iota-sdk/transactions');
     const tx = new Transaction();
 
-    tx.moveCall({
-      target: `${state.packageId || CHAIN_CONFIG.packageId}::xen::claim_mint_reward`,
-      arguments: [
-        tx.object(CHAIN_CONFIG.protocolId),
-        tx.object(CHAIN_CONFIG.clockId),
-        tx.object(receipt.id),
-      ],
-    });
+    for (const receipt of claimable) {
+      tx.moveCall({
+        target: `${state.packageId || CHAIN_CONFIG.packageId}::xen::claim_mint_reward`,
+        arguments: [
+          tx.object(CHAIN_CONFIG.protocolId),
+          tx.object(CHAIN_CONFIG.clockId),
+          tx.object(receipt.id),
+        ],
+      });
+    }
 
     const signer = session.wallet.features?.['iota:signAndExecuteTransaction'];
     if (!signer?.signAndExecuteTransaction) throw new Error('Wallet does not support signAndExecuteTransaction');
@@ -964,7 +1051,7 @@ async function executeClaimMintRewardTx(state) {
       options: { showEffects: true },
     });
 
-    if (statusEl) statusEl.textContent = `Claim submitted. Digest: ${res?.digest || 'submitted'}`;
+    if (statusEl) statusEl.textContent = `Claim-all submitted. Digest: ${res?.digest || 'submitted'}`;
 
     await renderClaimStatus(session.address, state);
     await renderStakeCoinOptions(session.address, state);
@@ -1012,6 +1099,7 @@ async function renderClaimStatus(address, state) {
 
   if (!address) {
     APP_STATE.activeMintReceipt = null;
+    APP_STATE.activeMintReceipts = [];
     hintEl.textContent = 'Connect wallet to load your mint receipt status.';
     pendingEl.textContent = '-';
     claimableEl.textContent = '-';
@@ -1022,10 +1110,11 @@ async function renderClaimStatus(address, state) {
   hintEl.textContent = `Loading claim status for ${address}...`;
 
   try {
-    const receipt = await loadActiveMintReceipt(address, state);
-    APP_STATE.activeMintReceipt = receipt;
+    const receipts = await loadMintReceipts(address, state);
+    APP_STATE.activeMintReceipts = receipts;
+    APP_STATE.activeMintReceipt = receipts[0] || null;
 
-    if (!receipt) {
+    if (!receipts.length) {
       hintEl.textContent = 'No active mint receipt found for this wallet.';
       pendingEl.textContent = 'None';
       claimableEl.textContent = 'None';
@@ -1033,41 +1122,46 @@ async function renderClaimStatus(address, state) {
       return;
     }
 
-    const { cRank, termDays, maturityMs, ampAtClaim } = receipt;
-    const nowMs = Date.now();
+    const pending = receipts.filter((r) => !r.matured);
+    const claimable = receipts.filter((r) => r.matured);
 
-    if (nowMs < maturityMs) {
-      const remainingDays = Math.ceil((maturityMs - nowMs) / DAY_MS);
-      hintEl.textContent = 'You have an active mint receipt that is not matured yet.';
-      pendingEl.innerHTML = `
-        <div class="claim-warn"><b>Pending</b></div>
-        cRank: ${fmt(cRank)}<br/>
-        Term: ${fmt(termDays)} days<br/>
-        AMP at claim: ${fmt(ampAtClaim)}<br/>
-        Matures in: ${fmt(remainingDays)} day(s)
-      `;
-      claimableEl.textContent = 'None yet';
+    if (pending.length) {
+      const lines = pending
+        .slice(0, 3)
+        .map((r) => {
+          const remainingDays = Math.max(0, Math.ceil((r.maturityMs - Date.now()) / DAY_MS));
+          return `cRank ${fmt(r.cRank)} · term ${fmt(r.termDays)}d · matures in ${fmt(remainingDays)}d`;
+        })
+        .join('<br/>');
+      pendingEl.innerHTML = `<div class="claim-warn"><b>${fmt(pending.length)} pending</b></div>${lines}`;
     } else {
-      const daysLate = Math.floor((nowMs - maturityMs) / DAY_MS);
-      const penalty = latePenaltyPct(daysLate);
-      hintEl.textContent = 'You have a matured receipt. Claim timing penalty depends on lateness.';
       pendingEl.textContent = 'None';
-      claimableEl.innerHTML = `
-        <div class="claim-ok"><b>Claimable now</b></div>
-        cRank: ${fmt(cRank)}<br/>
-        Term: ${fmt(termDays)} days<br/>
-        AMP at claim: ${fmt(ampAtClaim)}<br/>
-        Days late: ${fmt(daysLate)}<br/>
-        Current penalty band: ${penalty}%
-      `;
     }
 
-    if (!receipt.packageMatch) {
-      hintEl.textContent += ' (note: receipt package differs from configured package id)';
+    if (claimable.length) {
+      const lines = claimable
+        .slice(0, 3)
+        .map((r) => {
+          const daysLate = Math.max(0, Math.floor((Date.now() - r.maturityMs) / DAY_MS));
+          const penalty = latePenaltyPct(daysLate);
+          return `cRank ${fmt(r.cRank)} · term ${fmt(r.termDays)}d · late ${fmt(daysLate)}d · penalty ${penalty}%`;
+        })
+        .join('<br/>');
+      claimableEl.innerHTML = `<div class="claim-ok"><b>${fmt(claimable.length)} claimable</b></div>${lines}`;
+    } else {
+      claimableEl.textContent = 'None yet';
     }
+
+    const pkgMismatches = receipts.filter((r) => !r.packageMatch).length;
+    hintEl.textContent = `Found ${fmt(receipts.length)} mint receipt(s): ${fmt(pending.length)} pending, ${fmt(claimable.length)} claimable.`;
+    if (pkgMismatches > 0) {
+      hintEl.textContent += ` ${fmt(pkgMismatches)} receipt(s) are from a different package id.`;
+    }
+
     syncMintUiState();
   } catch (err) {
     APP_STATE.activeMintReceipt = null;
+    APP_STATE.activeMintReceipts = [];
     console.error('Claim status read failed', err);
     hintEl.textContent = 'Claim status read failed. Please reconnect wallet and try again.';
     pendingEl.textContent = 'Unavailable';
