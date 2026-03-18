@@ -5,6 +5,11 @@ This package is a first-pass port of the XEN v1.7 litepaper mechanics onto IOTA 
 ## Repository
 - GitHub: https://github.com/kennermike527-alt/zenforge-iota-move
 
+## Current testnet deployment (parallel-mint package)
+- Package: `0xf7ef66f02383e41f4b2ba253a5dfe8033527c4894dbf9f81f5e6f5f0f4724d27`
+- Protocol object: `0x5f89f3838ab94618a38f340350060127cb3a7d359e0f9f77e6f6de64595812cd`
+- Publish tx: `DEQWqNQ9JPebsQf22Aec55M9r2vCPf4FMc8UiB4meUYY`
+
 ## Location
 - `xen-iota-move/move/xen`
 

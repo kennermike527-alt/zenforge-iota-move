@@ -4,10 +4,10 @@ const CHAIN_CONFIG = {
   rpcUrl: window.ZENFORGE_RPC_URL || 'https://api.testnet.iota.cafe',
   protocolId:
     window.ZENFORGE_PROTOCOL_ID ||
-    '0xdbae4eb086afd1448d41306a5ad9c29fa48d802ace9d29dab857b543ee8e0c6f',
+    '0x5f89f3838ab94618a38f340350060127cb3a7d359e0f9f77e6f6de64595812cd',
   packageId:
     window.ZENFORGE_PACKAGE_ID ||
-    '0xa77f492c82c6f886801067a7b4a7c2eafe26b1f165ec2ae77539464d57ff2567',
+    '0xf7ef66f02383e41f4b2ba253a5dfe8033527c4894dbf9f81f5e6f5f0f4724d27',
   clockId: window.ZENFORGE_CLOCK_ID || '0x6',
   networkLabel: window.ZENFORGE_NETWORK || 'testnet',
 };
