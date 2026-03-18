@@ -892,11 +892,6 @@ async function loadMintReceipts(address, state) {
     });
 }
 
-async function loadActiveMintReceipt(address, state) {
-  const all = await loadMintReceipts(address, state);
-  return all[0] || null;
-}
-
 function syncMintUiState() {
   const mintBtn = document.querySelector('#mintNowBtn');
   const claimBtn = document.querySelector('#claimMintBtn');
@@ -924,9 +919,9 @@ function syncMintUiState() {
     return;
   }
 
-  // Contract guard: one active mint at a time for this protocol object.
-  mintBtn.disabled = receipts.length > 0;
-  mintBtn.textContent = receipts.length > 0 ? 'Mint locked (active receipt)' : 'Start mint (claim rank)';
+  // Parallel mint mode: mint can always start; claim button appears for matured receipts.
+  mintBtn.disabled = false;
+  mintBtn.textContent = 'Start mint (claim rank)';
   claimBtn.disabled = claimable.length === 0;
   claimBtn.textContent = claimable.length > 1 ? `Claim all mint rewards (${claimable.length})` : 'Claim all mint rewards';
   statusEl.textContent = '';
@@ -944,20 +939,14 @@ async function executeClaimRankTx(state) {
   }
   if (!termInput) return;
 
-  // Guard against duplicate active mints (on-chain abort code 0 / EActiveMintExists).
-  let existingReceipts = [];
+  // Refresh local receipt cache before minting (parallel mints allowed by updated contract).
   try {
-    existingReceipts = await loadMintReceipts(session.address, state);
-    APP_STATE.activeMintReceipts = existingReceipts;
-    APP_STATE.activeMintReceipt = existingReceipts[0] || null;
-  } catch (err) {
-    if (statusEl) statusEl.textContent = `Mint precheck failed: ${err?.message || err}`;
-    return;
-  }
-  if (existingReceipts.length > 0) {
+    const receipts = await loadMintReceipts(session.address, state);
+    APP_STATE.activeMintReceipts = receipts;
+    APP_STATE.activeMintReceipt = receipts[0] || null;
     syncMintUiState();
-    if (statusEl) statusEl.textContent = 'Current contract allows one active mint receipt at a time. Claim current receipt, then mint again (unlimited cycles).';
-    return;
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `Mint precheck warning: ${err?.message || err}`;
   }
 
   let termDays = Math.floor(Number(termInput.value || 0));
@@ -995,7 +984,12 @@ async function executeClaimRankTx(state) {
 
     await renderClaimStatus(session.address, state);
   } catch (err) {
-    if (statusEl) statusEl.textContent = `Mint failed: ${err?.message || err}`;
+    const msg = String(err?.message || err || 'unknown error');
+    if (statusEl) {
+      statusEl.textContent = msg.includes('Abort Code: 0')
+        ? 'Mint failed with on-chain Abort 0. This means deployed contract still enforces one active mint per wallet. Parallel mint logic needs contract publish/upgrade.'
+        : `Mint failed: ${msg}`;
+    }
   } finally {
     if (mintBtn) mintBtn.disabled = false;
     syncMintUiState();

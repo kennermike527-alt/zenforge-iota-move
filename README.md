@@ -40,7 +40,9 @@ This package is a first-pass port of the XEN v1.7 litepaper mechanics onto IOTA 
 - Uses integer math (basis points) for deterministic Move execution.
 - `rank_delta` is clamped to at least `1` to avoid `log2(0)` edge case.
 - Genesis time is initialized from `tx_context::epoch_timestamp_ms` at publish.
-- Active mint/stake states are tracked in protocol tables to prevent duplicate active positions.
+- Active state tracking:
+  - mints use a per-address active receipt count (parallel mint receipts allowed)
+  - stakes remain single-active per address (guarded by `active_stakes`)
 - Mint-fee simulator shown in web UI is currently a policy preview only and not enforced in on-chain `claim_rank` execution.
 
 ## Build

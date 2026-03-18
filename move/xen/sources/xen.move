@@ -20,7 +20,6 @@ module xen_iota::xen {
     const BPS_DENOM: u128 = 10_000;
     const U64_MAX_U128: u128 = 18_446_744_073_709_551_615;
 
-    const EActiveMintExists: u64 = 0;
     const ENoActiveMint: u64 = 1;
     const EInvalidTerm: u64 = 2;
     const ETooEarlyToClaim: u64 = 3;
@@ -39,7 +38,7 @@ module xen_iota::xen {
         genesis_ts_ms: u64,
         global_rank: u64,
         treasury: TreasuryCap<XEN>,
-        active_mints: Table<address, bool>,
+        active_mints: Table<address, u64>,
         active_stakes: Table<address, bool>,
     }
 
@@ -79,7 +78,7 @@ module xen_iota::xen {
             genesis_ts_ms: tx_context::epoch_timestamp_ms(ctx),
             global_rank: 0,
             treasury,
-            active_mints: table::new<address, bool>(ctx),
+            active_mints: table::new<address, u64>(ctx),
             active_stakes: table::new<address, bool>(ctx),
         };
 
@@ -88,7 +87,6 @@ module xen_iota::xen {
 
     public entry fun claim_rank(protocol: &mut Protocol, clock: &Clock, term_days: u64, ctx: &mut TxContext) {
         let sender = tx_context::sender(ctx);
-        assert!(!table::contains(&protocol.active_mints, sender), EActiveMintExists);
 
         let max_term = free_mint_term_limit(protocol.global_rank);
         assert!(term_days >= 1 && term_days <= max_term, EInvalidTerm);
@@ -109,7 +107,7 @@ module xen_iota::xen {
             amp_at_claim: amp_now,
         };
 
-        table::add(&mut protocol.active_mints, sender, true);
+        bump_active_mint_count(protocol, sender);
         transfer::public_transfer(receipt, sender);
     }
 
@@ -271,7 +269,7 @@ module xen_iota::xen {
     }
 
     fun cleanup_mint(protocol: &mut Protocol, receipt: MintReceipt, sender: address) {
-        let _removed = table::remove(&mut protocol.active_mints, sender);
+        reduce_active_mint_count(protocol, sender);
 
         let MintReceipt {
             id,
@@ -282,6 +280,26 @@ module xen_iota::xen {
             amp_at_claim: _,
         } = receipt;
         object::delete(id);
+    }
+
+    fun bump_active_mint_count(protocol: &mut Protocol, sender: address) {
+        if (table::contains(&protocol.active_mints, sender)) {
+            let count_ref = table::borrow_mut(&mut protocol.active_mints, sender);
+            *count_ref = *count_ref + 1;
+        } else {
+            table::add(&mut protocol.active_mints, sender, 1);
+        };
+    }
+
+    fun reduce_active_mint_count(protocol: &mut Protocol, sender: address) {
+        assert!(table::contains(&protocol.active_mints, sender), ENoActiveMint);
+        let count = *table::borrow(&protocol.active_mints, sender);
+        if (count <= 1) {
+            let _removed = table::remove(&mut protocol.active_mints, sender);
+        } else {
+            let count_ref = table::borrow_mut(&mut protocol.active_mints, sender);
+            *count_ref = count - 1;
+        };
     }
 
     fun create_stake_receipt(
@@ -462,7 +480,7 @@ module xen_iota::xen {
             genesis_ts_ms: tx_context::epoch_timestamp_ms(ctx),
             global_rank: 0,
             treasury: coin::create_treasury_cap_for_testing<XEN>(ctx),
-            active_mints: table::new<address, bool>(ctx),
+            active_mints: table::new<address, u64>(ctx),
             active_stakes: table::new<address, bool>(ctx),
         };
         transfer::share_object(protocol);
