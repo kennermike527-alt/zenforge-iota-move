@@ -85,56 +85,72 @@
         </div>
 
         <div id="panelMint" class="tab-panel active" role="tabpanel" aria-labelledby="tabMint">
-          <h3>Fee policy simulator</h3>
-          <p class="subtle">Editable sandbox prefilled from current protocol metrics. Fee logic here is a policy model only (not currently enforced on-chain).</p>
+          <h3>Mint</h3>
+          <p class="subtle">Sane split: on-chain actions are separate from simulator math.</p>
 
-          <div class="inputs sim-grid">
-            <label>Global rank<input id="simGlobalRank" type="number" min="1" step="1" value="1" /></label>
-            <label>Selected term (days, max 100 for now)<input id="simTermDays" type="number" min="1" max="100" step="1" value="30" /></label>
-            <label>Current AMP (locked)<input id="simAmp" type="number" min="1" step="1" value="3000" readonly /></label>
-            <label>Min fee (IOTA)<input id="simMinFee" type="number" min="0" step="0.001" value="0.005" /></label>
-            <label>Max fee (IOTA)<input id="simMaxFee" type="number" min="0" step="0.001" value="0.05" /></label>
+          <div class="flow-block">
+            <h4 class="flow-title">On-chain mint actions</h4>
+            <p class="subtle">Use the selected term from simulator input, then execute on-chain.</p>
+            <div class="mint-actions">
+              <button id="mintNowBtn" class="btn primary" type="button">Start mint (claim rank)</button>
+              <button id="claimMintBtn" class="btn ghost" type="button" disabled>Claim mint reward</button>
+              <span id="mintTxStatus" class="subtle">Connect wallet to enable mint actions.</span>
+            </div>
           </div>
 
-          <div class="mint-actions">
-            <button id="mintNowBtn" class="btn primary" type="button">Start mint (claim rank)</button>
-            <button id="claimMintBtn" class="btn ghost" type="button" disabled>Claim mint reward</button>
-            <span id="mintTxStatus" class="subtle">Connect wallet to enable mint actions.</span>
+          <div class="flow-block">
+            <h4 class="flow-title">Fee policy simulator (planning only)</h4>
+            <p class="subtle">Editable sandbox prefilled from current protocol metrics. This model is not enforced on-chain.</p>
+
+            <div class="inputs sim-grid">
+              <label>Global rank<input id="simGlobalRank" type="number" min="1" step="1" value="1" /></label>
+              <label>Selected term (days, max 100 for now)<input id="simTermDays" type="number" min="1" max="100" step="1" value="30" /></label>
+              <label>Current AMP (locked)<input id="simAmp" type="number" min="1" step="1" value="3000" readonly /></label>
+              <label>Min fee (IOTA)<input id="simMinFee" type="number" min="0" step="0.001" value="0.005" /></label>
+              <label>Max fee (IOTA)<input id="simMaxFee" type="number" min="0" step="0.001" value="0.05" /></label>
+            </div>
+
+            <div id="feeOutput" class="output-box">Loading simulator...</div>
+            <div id="feeFormulaOutput" class="output-box">Loading fee formula...</div>
+            <p id="simStateNote" class="subtle"></p>
+            <p id="feeNote" class="subtle"></p>
           </div>
-
-          <div id="feeOutput" class="output-box">Loading simulator...</div>
-          <div id="feeFormulaOutput" class="output-box">Loading fee formula...</div>
-
-          <p id="simStateNote" class="subtle"></p>
-          <p id="feeNote" class="subtle"></p>
         </div>
 
         <div id="panelStaking" class="tab-panel" role="tabpanel" aria-labelledby="tabStaking" hidden>
           <h3>Staking</h3>
-          <p class="subtle">Stake is on-chain. Amount input is human XENI units (contract uses 18-decimal raw units under the hood).</p>
+          <p class="subtle">Stake is on-chain. Input is human XENI units, converted internally to raw units.</p>
 
-          <div class="inputs stake-grid">
-            <label>Current APY (bps)<input id="stakeApyBps" type="number" min="0" step="1" value="2000" readonly /></label>
-            <label>Stake amount (XENI)<input id="stakeAmount" type="text" inputmode="decimal" value="1.0" /></label>
-            <label>Stake term (days)<input id="stakeTermDays" type="number" min="1" max="1000" step="1" value="365" /></label>
-            <label class="wide">XENI coin object
-              <div class="stake-coin-row">
-                <select id="stakeCoinSelect"></select>
-                <button id="refreshStakeCoins" class="btn ghost" type="button">Refresh</button>
-              </div>
-            </label>
+          <div class="flow-block">
+            <h4 class="flow-title">On-chain staking actions</h4>
+            <div class="inputs stake-grid">
+              <label>Current APY (bps)<input id="stakeApyBps" type="number" min="0" step="1" value="2000" readonly /></label>
+              <label>Stake amount (XENI)<input id="stakeAmount" type="text" inputmode="decimal" value="1.0" /></label>
+              <label>Stake term (days)<input id="stakeTermDays" type="number" min="1" max="1000" step="1" value="365" /></label>
+              <label class="wide">XENI coin object
+                <div class="stake-coin-row">
+                  <select id="stakeCoinSelect"></select>
+                  <button id="refreshStakeCoins" class="btn ghost" type="button">Refresh</button>
+                </div>
+              </label>
+            </div>
+
+            <div class="stake-actions">
+              <button id="stakeNowBtn" class="btn primary" type="button">Stake now</button>
+              <span id="stakeTxStatus" class="subtle">Connect wallet to enable staking.</span>
+            </div>
           </div>
 
-          <div class="stake-actions">
-            <button id="stakeNowBtn" class="btn primary" type="button">Stake now</button>
-            <span id="stakeTxStatus" class="subtle">Connect wallet to enable staking.</span>
+          <div class="flow-block">
+            <h4 class="flow-title">Staking preview</h4>
+            <div id="stakingOutput" class="output-box">Loading staking preview...</div>
+            <p id="stakingNote" class="subtle"></p>
           </div>
 
-          <div id="stakingOutput" class="output-box">Loading staking preview...</div>
-          <p id="stakingNote" class="subtle"></p>
-
-          <h3 class="stakes-title">Your stakes</h3>
-          <div id="stakeList" class="stakes-list"></div>
+          <div class="flow-block">
+            <h4 class="flow-title">Your stakes</h4>
+            <div id="stakeList" class="stakes-list"></div>
+          </div>
         </div>
       </section>
 
