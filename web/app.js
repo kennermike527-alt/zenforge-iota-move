@@ -29,6 +29,7 @@ const APP_STATE = {
   protocol: null,
   walletSession: null,
   activeMintReceipt: null,
+  stakeCoins: [],
 };
 
 function fmtDec(n, max = 6) {
@@ -510,11 +511,14 @@ async function renderStakeList(address, state) {
 async function renderStakeCoinOptions(address, state) {
   const selectEl = document.querySelector('#stakeCoinSelect');
   const stakeBtn = document.querySelector('#stakeNowBtn');
+  const stakeAllBtn = document.querySelector('#stakeAllBtn');
   if (!selectEl) return;
 
   if (!address) {
+    APP_STATE.stakeCoins = [];
     selectEl.innerHTML = '<option value="">Connect wallet first</option>';
     if (stakeBtn) stakeBtn.disabled = true;
+    if (stakeAllBtn) stakeAllBtn.disabled = true;
     return;
   }
 
@@ -526,9 +530,15 @@ async function renderStakeCoinOptions(address, state) {
     const coins = await rpcCall('iotax_getCoins', [address, coinType, null, 50]);
     const data = coins?.data || [];
 
+    APP_STATE.stakeCoins = data.map((c) => ({
+      id: c.coinObjectId || c.objectId || '',
+      balanceRaw: BigInt(String(c.balance || '0')),
+    }));
+
     if (!data.length) {
       selectEl.innerHTML = '<option value="">No XENI coin objects found</option>';
       if (stakeBtn) stakeBtn.disabled = true;
+      if (stakeAllBtn) stakeAllBtn.disabled = true;
       return;
     }
 
@@ -543,19 +553,23 @@ async function renderStakeCoinOptions(address, state) {
       .join('');
 
     if (stakeBtn) stakeBtn.disabled = false;
+    if (stakeAllBtn) stakeAllBtn.disabled = APP_STATE.stakeCoins.length === 0;
   } catch (err) {
+    APP_STATE.stakeCoins = [];
     selectEl.innerHTML = `<option value="">Failed to load coins: ${(err?.message || err).replace(/"/g, '&quot;')}</option>`;
     if (stakeBtn) stakeBtn.disabled = true;
+    if (stakeAllBtn) stakeAllBtn.disabled = true;
   }
 }
 
-async function executeStakeTx(state) {
+async function executeStakeTx(state, opts = {}) {
   const session = APP_STATE.walletSession;
   const statusEl = document.querySelector('#stakeTxStatus');
   const amountInput = document.querySelector('#stakeAmount');
   const termInput = document.querySelector('#stakeTermDays');
   const coinSelect = document.querySelector('#stakeCoinSelect');
   const stakeBtn = document.querySelector('#stakeNowBtn');
+  const stakeAllBtn = document.querySelector('#stakeAllBtn');
 
   if (!session?.wallet || !session?.account) {
     if (statusEl) statusEl.textContent = 'Connect wallet first.';
@@ -563,34 +577,80 @@ async function executeStakeTx(state) {
   }
   if (!amountInput || !termInput || !coinSelect) return;
 
-  const amountHumanText = String(amountInput.value || '').trim().replace(/,/g, '.');
-  const amountRaw = parseUnits(amountHumanText, TOKEN_DECIMALS);
+  const stakeAll = Boolean(opts?.stakeAll);
   const termDays = Math.floor(Number(termInput.value || 0));
-  const coinId = String(coinSelect.value || '').trim();
 
-  if (!coinId) {
-    if (statusEl) statusEl.textContent = 'Select a XENI coin object.';
-    return;
-  }
-  if (!amountRaw || amountRaw <= 0n) {
-    if (statusEl) statusEl.textContent = 'Enter a valid stake amount in XENI (e.g., 1.25).';
-    return;
-  }
-  if (amountRaw > U64_MAX) {
-    if (statusEl) statusEl.textContent = 'Stake amount is too large for u64.';
-    return;
-  }
   if (termDays < 1 || termDays > 1000) {
     if (statusEl) statusEl.textContent = 'Stake term must be between 1 and 1000 days.';
     return;
   }
 
+  let coinId = '';
+  let amountRaw = 0n;
+  let amountHumanText = '';
+
+  if (stakeAll) {
+    const coins = (APP_STATE.stakeCoins || []).filter((c) => c.id && c.balanceRaw > 0n);
+    if (!coins.length) {
+      if (statusEl) statusEl.textContent = 'No stakeable XENI coin objects found.';
+      return;
+    }
+
+    coinId = coins[0].id;
+    amountRaw = coins.reduce((acc, c) => acc + c.balanceRaw, 0n);
+    amountHumanText = formatUnits(amountRaw, TOKEN_DECIMALS, 6);
+
+    if (amountRaw <= 0n) {
+      if (statusEl) statusEl.textContent = 'No stakeable XENI balance found.';
+      return;
+    }
+  } else {
+    const amountText = String(amountInput.value || '').trim().replace(/,/g, '.');
+    const parsed = parseUnits(amountText, TOKEN_DECIMALS);
+    coinId = String(coinSelect.value || '').trim();
+
+    if (!coinId) {
+      if (statusEl) statusEl.textContent = 'Select a XENI coin object.';
+      return;
+    }
+    if (!parsed || parsed <= 0n) {
+      if (statusEl) statusEl.textContent = 'Enter a valid stake amount in XENI (e.g., 1.25).';
+      return;
+    }
+
+    const selected = (APP_STATE.stakeCoins || []).find((c) => c.id === coinId);
+    if (selected && parsed > selected.balanceRaw) {
+      if (statusEl) statusEl.textContent = 'Stake amount exceeds selected coin balance.';
+      return;
+    }
+
+    amountRaw = parsed;
+    amountHumanText = amountText;
+  }
+
+  if (amountRaw > U64_MAX) {
+    if (statusEl) statusEl.textContent = 'Stake amount is too large for u64.';
+    return;
+  }
+
   try {
     if (stakeBtn) stakeBtn.disabled = true;
-    if (statusEl) statusEl.textContent = `Preparing stake transaction for ${amountHumanText} XENI...`;
+    if (stakeAllBtn) stakeAllBtn.disabled = true;
+    if (statusEl) statusEl.textContent = stakeAll
+      ? `Preparing stake-all transaction for ${amountHumanText} XENI...`
+      : `Preparing stake transaction for ${amountHumanText} XENI...`;
 
     const { Transaction } = await import('https://esm.sh/@iota/iota-sdk/transactions');
     const tx = new Transaction();
+
+    if (stakeAll) {
+      const mergeSources = (APP_STATE.stakeCoins || [])
+        .filter((c) => c.id && c.id !== coinId && c.balanceRaw > 0n)
+        .map((c) => c.id);
+      if (mergeSources.length) {
+        tx.mergeCoins(coinId, mergeSources);
+      }
+    }
 
     tx.moveCall({
       target: `${state.packageId || CHAIN_CONFIG.packageId}::xen::stake`,
@@ -598,7 +658,7 @@ async function executeStakeTx(state) {
         tx.object(CHAIN_CONFIG.protocolId),
         tx.object(CHAIN_CONFIG.clockId),
         tx.object(coinId),
-        tx.pure.u64(amountRaw),
+        tx.pure.u64(amountRaw.toString()),
         tx.pure.u64(termDays),
       ],
     });
@@ -624,6 +684,7 @@ async function executeStakeTx(state) {
     if (statusEl) statusEl.textContent = `Stake failed: ${err?.message || err}`;
   } finally {
     if (stakeBtn) stakeBtn.disabled = false;
+    if (stakeAllBtn) stakeAllBtn.disabled = (APP_STATE.stakeCoins || []).length === 0;
   }
 }
 
@@ -683,6 +744,7 @@ async function executeWithdrawTx(state, receiptId, triggerBtn) {
 function setupStakingUi(state) {
   const refreshBtn = document.querySelector('#refreshStakeCoins');
   const stakeBtn = document.querySelector('#stakeNowBtn');
+  const stakeAllBtn = document.querySelector('#stakeAllBtn');
   const stakeList = document.querySelector('#stakeList');
 
   if (refreshBtn && !refreshBtn.dataset.bound) {
@@ -698,6 +760,13 @@ function setupStakingUi(state) {
     stakeBtn.dataset.bound = '1';
     stakeBtn.addEventListener('click', async () => {
       await executeStakeTx(state);
+    });
+  }
+
+  if (stakeAllBtn && !stakeAllBtn.dataset.bound) {
+    stakeAllBtn.dataset.bound = '1';
+    stakeAllBtn.addEventListener('click', async () => {
+      await executeStakeTx(state, { stakeAll: true });
     });
   }
 
