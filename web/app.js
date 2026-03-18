@@ -992,9 +992,8 @@ async function setupWalletConnection(onSessionChange) {
   const statusEl = document.querySelector('#walletStatus');
   const connectBtn = document.querySelector('#connectWalletBtn');
   const disconnectBtn = document.querySelector('#disconnectWalletBtn');
-  const addressEl = document.querySelector('#connectedAddress');
 
-  if (!statusEl || !connectBtn || !disconnectBtn || !addressEl) return;
+  if (!statusEl || !connectBtn || !disconnectBtn) return;
 
   const emitSession = (session) => {
     APP_STATE.walletSession = session || null;
@@ -1002,6 +1001,12 @@ async function setupWalletConnection(onSessionChange) {
   };
 
   const setStatus = (t) => (statusEl.textContent = t);
+  const shortAddress = (addr) => {
+    const a = String(addr || '');
+    if (a.length < 12) return a;
+    return `${a.slice(0, 6)}...${a.slice(-4)}`;
+  };
+
   let currentWallet = null;
   let wallets = [];
 
@@ -1020,6 +1025,7 @@ async function setupWalletConnection(onSessionChange) {
 
     if (!wallets.length) {
       connectBtn.disabled = true;
+      connectBtn.textContent = 'Connect';
       disconnectBtn.disabled = true;
       setStatus('No compatible IOTA wallet found. Open/enable extension for localhost and refresh.');
       emitSession(null);
@@ -1029,6 +1035,7 @@ async function setupWalletConnection(onSessionChange) {
     connectBtn.disabled = false;
     disconnectBtn.disabled = !currentWallet;
     if (!currentWallet) {
+      connectBtn.textContent = 'Connect';
       const primary = wallets[0]?.name || 'wallet';
       const more = wallets.length > 1 ? ` (+${wallets.length - 1} more detected)` : '';
       setStatus(`Wallet detected: ${primary}${more}. Click Connect.`);
@@ -1049,7 +1056,7 @@ async function setupWalletConnection(onSessionChange) {
       const acc = res?.accounts?.[0] || target.accounts?.[0];
       if (!acc) throw new Error('No account returned');
       currentWallet = target;
-      addressEl.textContent = acc.address;
+      connectBtn.textContent = shortAddress(acc.address);
       disconnectBtn.disabled = false;
       setStatus(`Connected: ${target.name}`);
 
@@ -1071,7 +1078,7 @@ async function setupWalletConnection(onSessionChange) {
       if (f?.disconnect) await f.disconnect();
     } finally {
       currentWallet = null;
-      addressEl.textContent = '-';
+      connectBtn.textContent = 'Connect';
       disconnectBtn.disabled = true;
       emitSession(null);
       refresh();

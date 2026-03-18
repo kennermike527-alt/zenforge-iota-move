@@ -185,7 +185,7 @@ body::before {
 
 .wallet-inline {
   display: grid;
-  grid-template-columns: auto auto;
+  grid-template-columns: auto auto auto;
   gap: 7px;
 }
 
@@ -698,6 +698,10 @@ input[readonly] {
   font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.01em;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
 }
 
