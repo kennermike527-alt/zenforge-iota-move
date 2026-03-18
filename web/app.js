@@ -23,6 +23,8 @@ const TOKEN_DECIMALS = Number(window.ZENFORGE_TOKEN_DECIMALS || 18);
 const U64_MAX = 18_446_744_073_709_551_615n;
 const BASE_MIN_FEE = Number(window.ZENFORGE_BASE_MIN_FEE || 0.005);
 const BASE_MAX_FEE = Number(window.ZENFORGE_BASE_MAX_FEE || 0.05);
+const WALLET_DOWNLOAD_URL =
+  window.ZENFORGE_WALLET_DOWNLOAD_URL || 'https://chromewebstore.google.com/search/iota%20wallet';
 const APP_STATE = {
   protocol: null,
   walletSession: null,
@@ -1024,10 +1026,10 @@ async function setupWalletConnection(onSessionChange) {
     wallets = (api.get() || []).filter((w) => Array.from(w.chains || []).some((c) => String(c).startsWith('iota:')));
 
     if (!wallets.length) {
-      connectBtn.disabled = true;
-      connectBtn.textContent = 'Connect';
+      connectBtn.disabled = false;
+      connectBtn.textContent = 'Get IOTA Wallet';
       disconnectBtn.disabled = true;
-      setStatus('No compatible IOTA wallet found. Open/enable extension for localhost and refresh.');
+      setStatus('No compatible IOTA wallet found. Click "Get IOTA Wallet" to install the extension.');
       emitSession(null);
       return;
     }
@@ -1045,7 +1047,8 @@ async function setupWalletConnection(onSessionChange) {
   connectBtn.onclick = async () => {
     const target = wallets[0];
     if (!target) {
-      setStatus('No compatible wallet detected.');
+      window.open(WALLET_DOWNLOAD_URL, '_blank', 'noopener,noreferrer');
+      setStatus('Opened wallet download page. Install the extension, then refresh.');
       return;
     }
 
