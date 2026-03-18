@@ -754,7 +754,7 @@ function syncMintUiState() {
 async function executeClaimRankTx(state) {
   const session = APP_STATE.walletSession;
   const statusEl = document.querySelector('#mintTxStatus');
-  const termInput = document.querySelector('#simTermDays');
+  const termInput = document.querySelector('#mintTermDays');
   const mintBtn = document.querySelector('#mintNowBtn');
 
   if (!session?.wallet || !session?.account) {
@@ -872,6 +872,13 @@ async function executeClaimMintRewardTx(state) {
 function setupMintUi(state) {
   const mintBtn = document.querySelector('#mintNowBtn');
   const claimBtn = document.querySelector('#claimMintBtn');
+  const termInput = document.querySelector('#mintTermDays');
+
+  if (termInput && !termInput.dataset.inited) {
+    termInput.dataset.inited = '1';
+    const suggested = Math.min(100, Math.max(1, Math.floor(Number(state?.maxTerm || 30))));
+    termInput.value = String(suggested);
+  }
 
   if (mintBtn && !mintBtn.dataset.bound) {
     mintBtn.dataset.bound = '1';
@@ -1084,7 +1091,6 @@ async function main() {
 
   renderFeeSimulator(state);
   renderStakingPreview(state);
-  setupToolTabs();
   setupCursorFx();
   setupMintUi(state);
   setupStakingUi(state);
