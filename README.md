@@ -27,12 +27,16 @@ This package is a first-pass port of the XEN v1.7 litepaper mechanics onto IOTA 
   - `0,1,3,8,17,35,72,99` (>=7 days late => 99%)
 - Staking APY:
   - starts at `20%`, decreases by `1%` every `90 days`, floor `2%`
+- UI mint-fee policy simulator (off-chain, for planning):
+  - `fee(day) = minFee + ((maxFee - minFee) * (365 - day)) / 364`
+  - day `1` maps near `maxFee`; day `365` maps to `minFee`
 
 ## Notes / deviations
 - Uses integer math (basis points) for deterministic Move execution.
 - `rank_delta` is clamped to at least `1` to avoid `log2(0)` edge case.
 - Genesis time is initialized from `tx_context::epoch_timestamp_ms` at publish.
 - Active mint/stake states are tracked in protocol tables to prevent duplicate active positions.
+- Mint-fee simulator shown in web UI is currently a policy preview only and not enforced in on-chain `claim_rank` execution.
 
 ## Build
 From workspace root:

@@ -1,10 +1,4 @@
-const intFmt = new Intl.NumberFormat();
-const pctFmt = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 });
-
-const fmt = (n) => intFmt.format(Number(n || 0));
-const fmtPct = (n) => `${pctFmt.format(Number(n || 0))}%`;
-
-const DEATH_WALLET_ADDRESS = window.XENFORGE_DEATH_WALLET || 'TBD (pending publish)';
+const fmt = (n) => new Intl.NumberFormat().format(Number(n || 0));
 
 const CHAIN_CONFIG = {
   rpcUrl: window.ZENFORGE_RPC_URL || 'https://api.testnet.iota.cafe',
@@ -14,375 +8,62 @@ const CHAIN_CONFIG = {
   packageId:
     window.ZENFORGE_PACKAGE_ID ||
     '0xa77f492c82c6f886801067a7b4a7c2eafe26b1f165ec2ae77539464d57ff2567',
+  clockId: window.ZENFORGE_CLOCK_ID || '0x6',
   networkLabel: window.ZENFORGE_NETWORK || 'testnet',
 };
 
-const NANO = 1_000_000_000n;
+function setText(id, text) {
+  const el = document.querySelector(id);
+  if (el) el.textContent = text;
+}
 
-const formatToken = (raw, decimals = 18) => {
+const DAY_MS = 86_400_000;
+const CHAIN_ID = `iota:${CHAIN_CONFIG.networkLabel}`;
+const TOKEN_DECIMALS = Number(window.ZENFORGE_TOKEN_DECIMALS || 18);
+const U64_MAX = 18_446_744_073_709_551_615n;
+const APP_STATE = {
+  protocol: null,
+  walletSession: null,
+};
+
+function fmtDec(n, max = 6) {
+  return Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: max });
+}
+
+function parseUnits(rawText, decimals = TOKEN_DECIMALS) {
+  const v = String(rawText || '').trim();
+  if (!v) return null;
+  if (!/^(?:\d+|\d*\.\d+)$/.test(v)) return null;
+
+  const [whole, frac = ''] = v.split('.');
+  const wholeSafe = whole === '' ? '0' : whole;
+  const fracPadded = (frac + '0'.repeat(decimals)).slice(0, decimals);
   try {
-    const v = BigInt(String(raw || '0'));
-    const base = 10n ** BigInt(decimals);
-    const whole = v / base;
-    const frac = v % base;
-    if (frac === 0n) return whole.toString();
-    const s = frac.toString().padStart(decimals, '0').replace(/0+$/, '');
-    return `${whole.toString()}.${s}`;
+    return BigInt(wholeSafe) * 10n ** BigInt(decimals) + BigInt(fracPadded || '0');
   } catch {
-    return String(raw || '0');
+    return null;
   }
-};
-
-const kpiEl = (label, value, small = false) => `
-  <article class="kpi">
-    <div class="label">${label}</div>
-    <div class="value ${small ? 'small' : ''}">${value}</div>
-  </article>
-`;
-
-const scenarioLabel = (name) =>
-  String(name || '')
-    .replace(/^attack-/, '')
-    .split('-')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
-
-async function rpcCall(method, params) {
-  const res = await fetch(CHAIN_CONFIG.rpcUrl, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params }),
-  });
-
-  if (!res.ok) throw new Error(`RPC HTTP ${res.status}`);
-  const payload = await res.json();
-  if (payload.error) throw new Error(payload.error.message || JSON.stringify(payload.error));
-  return payload.result;
 }
 
-function computeAmpNow(nowMs, genesisMs) {
-  const dayMs = 86_400_000;
-  const ampStart = 3000;
-  const daysSince = nowMs > genesisMs ? Math.floor((nowMs - genesisMs) / dayMs) : 0;
-  if (daysSince >= ampStart - 1) return 1;
-  return ampStart - daysSince;
-}
-
-function computeApyNowBps(nowMs, genesisMs) {
-  const dayMs = 86_400_000;
-  const apyStart = 2000;
-  const apyMin = 200;
-  const daysSince = nowMs > genesisMs ? Math.floor((nowMs - genesisMs) / dayMs) : 0;
-  const decay = Math.floor(daysSince / 90) * 100;
-  if (decay >= apyStart - apyMin) return apyMin;
-  return apyStart - decay;
-}
-
-async function fetchOnchainState() {
-  const result = await rpcCall('iota_getObject', [
-    CHAIN_CONFIG.protocolId,
-    { showContent: true, showType: true },
-  ]);
-
-  const fields = result?.data?.content?.fields;
-  if (!fields) throw new Error('Protocol object content unavailable');
-
-  const nowMs = Date.now();
-  const genesisMs = Number(fields.genesis_ts_ms || 0);
-  const globalRank = Number(fields.global_rank || 0);
-
-  const packageFromType = String(result?.data?.type || '').split('::')[0] || CHAIN_CONFIG.packageId;
-
-  return {
-    ok: true,
-    network: CHAIN_CONFIG.networkLabel,
-    rpcUrl: CHAIN_CONFIG.rpcUrl,
-    protocolId: CHAIN_CONFIG.protocolId,
-    packageId: packageFromType,
-    globalRank,
-    maxTerm: freeMintTermLimitForRank(globalRank),
-    amp: computeAmpNow(nowMs, genesisMs),
-    apyBps: computeApyNowBps(nowMs, genesisMs),
-    activeMints: Number(fields?.active_mints?.fields?.size || 0),
-    activeStakes: Number(fields?.active_stakes?.fields?.size || 0),
-    totalSupplyRaw: String(fields?.treasury?.fields?.total_supply?.fields?.value || '0'),
-    totalSupplyDisplay: formatToken(fields?.treasury?.fields?.total_supply?.fields?.value || '0', 18),
-    asOf: new Date(nowMs).toISOString(),
-  };
-}
-
-const walletState = {
-  api: null,
-  wallets: [],
-  currentWallet: null,
-  account: null,
-  silentAttempted: false,
-};
-
-const shortAddress = (addr) => {
-  const s = String(addr || '');
-  if (s.length <= 16) return s;
-  return `${s.slice(0, 8)}...${s.slice(-6)}`;
-};
-
-function updateWalletUi(message) {
-  const statusEl = document.querySelector('#walletStatus');
-  const addrEl = document.querySelector('#connectedAddress');
-  const connectBtn = document.querySelector('#connectWalletBtn');
-  const disconnectBtn = document.querySelector('#disconnectWalletBtn');
-
-  if (statusEl && message) statusEl.textContent = message;
-  if (addrEl) addrEl.textContent = walletState.account?.address || '-';
-  if (connectBtn) connectBtn.disabled = !walletState.wallets.length;
-  if (disconnectBtn) disconnectBtn.disabled = !walletState.currentWallet;
-}
-
-function renderWalletSelect() {
-  const select = document.querySelector('#walletSelect');
-  if (!select) return;
-
-  const currentName = select.value;
-  select.innerHTML = '';
-
-  if (!walletState.wallets.length) {
-    const opt = document.createElement('option');
-    opt.value = '';
-    opt.textContent = 'No compatible wallet detected';
-    select.appendChild(opt);
-    updateWalletUi('No compatible IOTA wallet found. Open/install your wallet extension, then refresh.');
-    return;
-  }
-
-  for (const w of walletState.wallets) {
-    const opt = document.createElement('option');
-    opt.value = w.name;
-    opt.textContent = w.name;
-    select.appendChild(opt);
-  }
-
-  const fallback = walletState.wallets[0]?.name || '';
-  select.value = walletState.wallets.some((w) => w.name === currentName) ? currentName : fallback;
-}
-
-function getSelectedWallet() {
-  const select = document.querySelector('#walletSelect');
-  if (!select) return null;
-  const name = select.value;
-  return walletState.wallets.find((w) => w.name === name) || null;
-}
-
-async function connectWallet(wallet, silent = false) {
-  if (!wallet) throw new Error('Select a wallet first.');
-  const connectFeature = wallet.features?.['standard:connect'];
-  if (!connectFeature?.connect) throw new Error(`${wallet.name} does not support standard:connect.`);
-
-  const result = await connectFeature.connect(silent ? { silent: true } : undefined);
-  const account = result?.accounts?.[0] || wallet.accounts?.[0];
-  if (!account) throw new Error(`No account returned by ${wallet.name}.`);
-
-  walletState.currentWallet = wallet;
-  walletState.account = account;
-  localStorage.setItem('xenforge.wallet', wallet.name);
-
-  updateWalletUi(`Connected: ${wallet.name} · ${shortAddress(account.address)}`);
-}
-
-async function disconnectWallet() {
-  const wallet = walletState.currentWallet;
-  if (!wallet) return;
-
+function formatUnits(rawValue, decimals = TOKEN_DECIMALS, maxFrac = 6) {
   try {
-    const disconnectFeature = wallet.features?.['standard:disconnect'];
-    if (disconnectFeature?.disconnect) await disconnectFeature.disconnect();
-  } finally {
-    walletState.currentWallet = null;
-    walletState.account = null;
-    localStorage.removeItem('xenforge.wallet');
-    updateWalletUi('Wallet disconnected.');
+    const raw = BigInt(rawValue || 0);
+    const base = 10n ** BigInt(decimals);
+    const whole = raw / base;
+    const frac = raw % base;
+
+    if (frac === 0n) return whole.toString();
+
+    let fracText = frac.toString().padStart(decimals, '0');
+    fracText = fracText.slice(0, Math.max(0, maxFrac)).replace(/0+$/, '');
+    return fracText ? `${whole.toString()}.${fracText}` : whole.toString();
+  } catch {
+    return '0';
   }
 }
 
-async function setupWalletConnection() {
-  const select = document.querySelector('#walletSelect');
-  const connectBtn = document.querySelector('#connectWalletBtn');
-  const disconnectBtn = document.querySelector('#disconnectWalletBtn');
-
-  if (!select || !connectBtn || !disconnectBtn) return;
-
-  updateWalletUi('Loading wallet connection module...');
-
-  let getWallets;
-  try {
-    ({ getWallets } = await import('https://esm.sh/@wallet-standard/app@1.1.0'));
-  } catch (err) {
-    updateWalletUi('Wallet loader unavailable. Check internet/extension and refresh.');
-    console.error('Wallet standard import failed:', err);
-    return;
-  }
-
-  walletState.api = getWallets();
-
-  const refreshWallets = async () => {
-    const all = walletState.api.get() || [];
-    walletState.wallets = all.filter((w) => Array.from(w.chains || []).some((c) => String(c).startsWith('iota:')));
-    renderWalletSelect();
-
-    if (!walletState.wallets.length) {
-      walletState.currentWallet = null;
-      walletState.account = null;
-      updateWalletUi('No compatible IOTA wallet found. Open/install your wallet extension, then refresh.');
-      return;
-    }
-
-    updateWalletUi(walletState.currentWallet ? `Connected: ${shortAddress(walletState.account?.address)}` : 'Wallet detected. Choose one and connect.');
-
-    if (!walletState.silentAttempted) {
-      walletState.silentAttempted = true;
-      const preferred = localStorage.getItem('xenforge.wallet');
-      if (preferred) {
-        const wallet = walletState.wallets.find((w) => w.name === preferred);
-        if (wallet) {
-          try {
-            await connectWallet(wallet, true);
-          } catch {
-            // silent connect can fail if authorization expired; user can reconnect manually.
-          }
-        }
-      }
-    }
-  };
-
-  walletState.api.on('register', refreshWallets);
-  walletState.api.on('unregister', refreshWallets);
-
-  connectBtn.addEventListener('click', async () => {
-    const wallet = getSelectedWallet();
-    if (!wallet) {
-      updateWalletUi('Select a wallet first.');
-      return;
-    }
-
-    updateWalletUi(`Connecting to ${wallet.name}...`);
-    try {
-      await connectWallet(wallet, false);
-    } catch (err) {
-      updateWalletUi(`Connection failed: ${err?.message || err}`);
-    }
-  });
-
-  disconnectBtn.addEventListener('click', async () => {
-    await disconnectWallet();
-  });
-
-  await refreshWallets();
-}
-
-function renderHeroStage(data) {
-  const scenario = data.defaultScenario || {};
-  const t = scenario.totals || {};
-
-  document.querySelector('#stamp').textContent = `Last refresh: ${new Date(data.generatedAt).toLocaleString()} • scenario: ${scenario.name || 'default'}`;
-  document.querySelector('#heroFinalRank').textContent = fmt(scenario.finalGlobalRank);
-  document.querySelector('#heroGross').textContent = fmt(t.grossClaimReward);
-  document.querySelector('#heroNet').textContent = fmt(t.netClaimReward);
-  document.querySelector('#heroMatured').textContent = fmt(t.maturedStakes);
-
-  const liveContext = document.querySelector('#liveContext');
-  if (liveContext) {
-    liveContext.textContent = `Baseline scenario: ${scenario.name || 'default'}`;
-  }
-}
-
-function renderKpis(data, onchain) {
-  const t = data.defaultScenario?.totals || {};
-
-  const primary = [
-    kpiEl('Network Position', fmt(onchain?.globalRank ?? data.defaultScenario?.finalGlobalRank)),
-    kpiEl('Current AMP', fmt(onchain?.amp ?? 0)),
-    kpiEl('Current APY (bps)', fmt(onchain?.apyBps ?? 0)),
-    kpiEl('Max Term (days)', fmt(onchain?.maxTerm ?? freeMintTermLimitForRank(data.defaultScenario?.finalGlobalRank || 0))),
-  ].join('');
-
-  const secondary = [
-    kpiEl('Total Claims', fmt(t.claims)),
-    kpiEl('Total Stakes', fmt(t.stakes)),
-  ].join('');
-
-  document.querySelector('#kpis').innerHTML = primary;
-  const more = document.querySelector('#kpisMore');
-  if (more) more.innerHTML = secondary;
-}
-
-function renderLiveMetricReadback(data, onchain) {
-  const scenario = data.defaultScenario || {};
-  const timeline = scenario.timelineSample || [];
-  const latest = timeline[timeline.length - 1] || {};
-
-  const setText = (id, text) => {
-    const el = document.querySelector(id);
-    if (el) el.textContent = text;
-  };
-
-  const setSource = (id, text) => {
-    const el = document.querySelector(id);
-    if (el) el.textContent = text;
-  };
-
-  if (onchain?.ok) {
-    setText('#liveMetricRank', `${fmt(onchain.globalRank)} participants/rank`);
-    setText('#liveMetricMaxTerm', `${fmt(onchain.maxTerm)} days`);
-    setText('#liveMetricAmp', fmt(onchain.amp));
-    setText('#liveMetricApy', `${fmt(onchain.apyBps)} bps`);
-    setText('#liveMetricActiveMints', fmt(onchain.activeMints));
-    setText('#liveMetricActiveStakes', fmt(onchain.activeStakes));
-    setText('#liveMetricSupply', onchain.totalSupplyDisplay);
-    setText('#liveMetricContract', onchain.packageId);
-    setText('#liveMetricProtocol', onchain.protocolId);
-    setText('#liveMetricRpc', onchain.rpcUrl);
-    setText('#liveMetricPenaltyState', 'Per-receipt (evaluate at claim time)');
-
-    setSource('#liveSourceRank', `Live on-chain (${onchain.network})`);
-    setSource('#liveSourceMaxTerm', 'Contract formula from live rank');
-    setSource('#liveSourceAmp', `Contract formula from live genesis time`);
-    setSource('#liveSourceApy', `Contract formula from live genesis time`);
-    setSource('#liveSourceActiveMints', 'Live on-chain table size');
-    setSource('#liveSourceActiveStakes', 'Live on-chain table size');
-    setSource('#liveSourceSupply', 'Live treasury total_supply');
-    setSource('#liveSourceContract', 'Derived from protocol object type');
-    setSource('#liveSourceProtocol', 'Runtime config');
-    setSource('#liveSourceRpc', 'Runtime config');
-  } else {
-    const rank = Number(scenario.finalGlobalRank || 0);
-    const maxTerm = freeMintTermLimitForRank(rank);
-
-    setText('#liveMetricRank', `${fmt(rank)} participants/rank`);
-    setText('#liveMetricMaxTerm', `${fmt(maxTerm)} days`);
-    setText('#liveMetricAmp', latest.amp != null ? String(latest.amp) : 'N/A');
-    setText('#liveMetricApy', latest.apyBps != null ? `${fmt(latest.apyBps)} bps` : 'N/A');
-    setText('#liveMetricActiveMints', 'N/A');
-    setText('#liveMetricActiveStakes', 'N/A');
-    setText('#liveMetricSupply', 'N/A');
-    setText('#liveMetricContract', CHAIN_CONFIG.packageId || 'Not set');
-    setText('#liveMetricProtocol', CHAIN_CONFIG.protocolId || 'Not set');
-    setText('#liveMetricRpc', CHAIN_CONFIG.rpcUrl || 'Not set');
-
-    setSource('#liveSourceRank', 'Simulation fallback');
-    setSource('#liveSourceMaxTerm', 'Computed from simulation rank');
-    setSource('#liveSourceAmp', 'Simulation fallback');
-    setSource('#liveSourceApy', 'Simulation fallback');
-    setSource('#liveSourceActiveMints', 'Unavailable (on-chain read failed)');
-    setSource('#liveSourceActiveStakes', 'Unavailable (on-chain read failed)');
-    setSource('#liveSourceSupply', 'Unavailable (on-chain read failed)');
-    setSource('#liveSourceContract', 'Runtime config');
-    setSource('#liveSourceProtocol', 'Runtime config');
-    setSource('#liveSourceRpc', 'Runtime config');
-  }
-}
-
-function clampNumber(value, min, max, fallback) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.min(max, Math.max(min, n));
+function estimateStakeReward(principal, apyBps, termDays) {
+  return (Number(principal || 0) * Number(apyBps || 0) * Number(termDays || 0)) / 10000 / 365;
 }
 
 function floorLog2(x) {
@@ -402,173 +83,767 @@ function freeMintTermLimitForRank(globalRank) {
 }
 
 function feeAtTerm(day, minFee, maxFee, maxTerm = 365) {
-  if (maxTerm <= 1) return minFee;
   return minFee + ((maxFee - minFee) * (maxTerm - day)) / (maxTerm - 1);
 }
 
-function eaaForRank(rank) {
-  return Math.max(0.1 - 0.001 * Math.floor(rank / 100000), 0);
+function latePenaltyPct(daysLate) {
+  if (daysLate <= 0) return 0;
+  if (daysLate === 1) return 1;
+  if (daysLate === 2) return 3;
+  if (daysLate === 3) return 8;
+  if (daysLate === 4) return 17;
+  if (daysLate === 5) return 35;
+  if (daysLate === 6) return 72;
+  return 99;
 }
 
-function rewardScore(globalRank, userRank, termDays) {
-  const rankDelta = Math.max(1, globalRank - userRank);
-  const eaa = eaaForRank(userRank);
+function computeAmpNow(nowMs, genesisMs) {
+  const dayMs = 86_400_000;
+  const ampStart = 3000;
+  const daysSince = nowMs > genesisMs ? Math.floor((nowMs - genesisMs) / dayMs) : 0;
+  return daysSince >= ampStart - 1 ? 1 : ampStart - daysSince;
+}
+
+function computeApyNowBps(nowMs, genesisMs) {
+  const dayMs = 86_400_000;
+  const apyStart = 2000;
+  const apyMin = 200;
+  const daysSince = nowMs > genesisMs ? Math.floor((nowMs - genesisMs) / dayMs) : 0;
+  const decay = Math.floor(daysSince / 90) * 100;
+  return decay >= apyStart - apyMin ? apyMin : apyStart - decay;
+}
+
+async function rpcCall(method, params) {
+  const res = await fetch(CHAIN_CONFIG.rpcUrl, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: Date.now(), method, params }),
+  });
+  if (!res.ok) throw new Error(`RPC ${res.status}`);
+  const body = await res.json();
+  if (body.error) throw new Error(body.error.message || JSON.stringify(body.error));
+  return body.result;
+}
+
+async function fetchOnchainState() {
+  const result = await rpcCall('iota_getObject', [CHAIN_CONFIG.protocolId, { showContent: true, showType: true }]);
+  const fields = result?.data?.content?.fields;
+  if (!fields) throw new Error('Protocol object content unavailable');
+
+  const now = Date.now();
+  const genesisMs = Number(fields.genesis_ts_ms || 0);
+  const globalRank = Number(fields.global_rank || 0);
+  const packageFromType = String(result?.data?.type || '').split('::')[0] || CHAIN_CONFIG.packageId;
+
   return {
-    rankDelta,
-    eaa,
-    score: Math.log2(rankDelta) * termDays * (1 + eaa),
+    source: 'live',
+    packageId: packageFromType,
+    globalRank,
+    maxTerm: freeMintTermLimitForRank(globalRank),
+    amp: computeAmpNow(now, genesisMs),
+    apyBps: computeApyNowBps(now, genesisMs),
   };
 }
 
-function renderFeeSimulatorChart(data, onchain) {
+function renderSnapshot(state, sourceLabel) {
+  setText('#metricRank', fmt(state.globalRank));
+  setText('#metricMaxTerm', `${fmt(state.maxTerm)} days`);
+  setText('#metricAmp', fmt(state.amp));
+  setText('#metricApy', fmt(state.apyBps));
+  setText('#selectableTermHint', `Right now, terms above ${fmt(state.maxTerm)} days are not selectable on-chain.`);
+
+  const isLive = !sourceLabel.includes('FALLBACK');
+
+  const badge = document.querySelector('#sourceBadge');
+  if (badge) {
+    badge.textContent = sourceLabel;
+    badge.classList.remove('live', 'fallback');
+    badge.classList.add(isLive ? 'live' : 'fallback');
+  }
+
+  const fetchBar = document.querySelector('#liveFetchBar');
+  const fetchText = document.querySelector('#liveFetchText');
+  if (fetchBar && fetchText) {
+    fetchBar.classList.remove('checking', 'live', 'fallback');
+    fetchBar.classList.add(isLive ? 'live' : 'fallback');
+    fetchText.textContent = isLive
+      ? 'Metrics currently fetched on-chain'
+      : 'On-chain fetch unavailable — showing fallback data';
+  }
+}
+
+function renderFeeSimulator(state) {
+  const rankInput = document.querySelector('#simGlobalRank');
+  const termInput = document.querySelector('#simTermDays');
+  const ampInput = document.querySelector('#simAmp');
   const minInput = document.querySelector('#simMinFee');
   const maxInput = document.querySelector('#simMaxFee');
-  const globalInput = document.querySelector('#simGlobalRank');
-  const userInput = document.querySelector('#simUserRank');
-  const termInput = document.querySelector('#simTermDays');
-  const summary = document.querySelector('#simSummary');
-  const rankSummary = document.querySelector('#rankSummary');
-  const walletEl = document.querySelector('#deathWalletAddress');
-  const feeBreakdown = document.querySelector('#feeBreakdown');
-  const feeMinNote = document.querySelector('#feeMinNote');
-  const feeSelectableNote = document.querySelector('#feeSelectableNote');
 
-  if (!minInput || !maxInput || !globalInput || !userInput || !termInput || !feeBreakdown) return;
+  const output = document.querySelector('#feeOutput');
+  const formulaOutput = document.querySelector('#feeFormulaOutput');
+  const feeNote = document.querySelector('#feeNote');
+  const simStateNote = document.querySelector('#simStateNote');
 
-  const defaultGlobalRank = Number(onchain?.globalRank ?? data?.defaultScenario?.finalGlobalRank ?? 100000);
-  globalInput.value = String(Math.max(1, Math.floor(defaultGlobalRank)));
-  userInput.value = String(Math.max(1, Math.floor(defaultGlobalRank - 1000)));
+  if (!rankInput || !termInput || !ampInput || !minInput || !maxInput || !output || !formulaOutput) return;
 
-  if (walletEl) walletEl.textContent = DEATH_WALLET_ADDRESS;
+  // Pre-populate from current protocol state (live or fallback)
+  const lockedAmp = Math.max(1, Math.floor(Number(state.amp || 3000)));
+  rankInput.value = String(Math.max(1, Math.floor(Number(state.globalRank || 1))));
+  termInput.value = String(Math.min(100, Math.max(1, Math.floor(Number(state.maxTerm || 100)))));
+  ampInput.value = String(lockedAmp);
+  ampInput.readOnly = true;
 
   const update = () => {
-    let minFee = clampNumber(minInput.value, 0, 1_000_000, 0.005);
-    let maxFee = clampNumber(maxInput.value, 0, 1_000_000, 0.05);
+    const rank = Math.max(1, Math.floor(Number(rankInput.value || 1)));
+    let termDays = Math.max(1, Math.floor(Number(termInput.value || 30)));
+    termDays = Math.min(100, termDays);
+    termInput.value = String(termDays);
 
-    let globalRank = Math.max(1, Math.floor(clampNumber(globalInput.value, 1, 1_000_000_000_000, defaultGlobalRank)));
-    let userRank = Math.max(1, Math.floor(clampNumber(userInput.value, 1, 1_000_000_000_000, Math.max(1, defaultGlobalRank - 1000))));
-    const termDays = Math.max(1, Math.floor(clampNumber(termInput.value, 1, 365, 100)));
+    ampInput.value = String(lockedAmp);
 
+    let minFee = Number(minInput.value || 0.005);
+    let maxFee = Number(maxInput.value || 0.05);
+    if (!Number.isFinite(minFee)) minFee = 0.005;
+    if (!Number.isFinite(maxFee)) maxFee = 0.05;
     if (maxFee < minFee) {
-      const tmp = maxFee;
+      const t = maxFee;
       maxFee = minFee;
-      minFee = tmp;
+      minFee = t;
       minInput.value = String(minFee);
       maxInput.value = String(maxFee);
     }
 
-    if (userRank >= globalRank) {
-      globalRank = userRank + 1;
-      globalInput.value = String(globalRank);
+    const impliedMaxTerm = freeMintTermLimitForRank(rank);
+    const selectedFee = feeAtTerm(termDays, minFee, maxFee);
+
+    output.innerHTML = [
+      `<b>Selected term:</b> ${termDays} days`,
+      `<b>Simulated fee charged:</b> ${selectedFee.toFixed(6)} IOTA`,
+      `<b>Fee range:</b> day 1 = ${maxFee.toFixed(6)} IOTA, day 365 = ${minFee.toFixed(6)} IOTA`,
+      `<b>Current simulator state:</b> rank ${fmt(rank)}, AMP ${fmt(lockedAmp)} (locked)`,
+    ].join('<br/>');
+
+    formulaOutput.innerHTML = [
+      '<b>Fee formula (policy model):</b>',
+      '<code>fee(day) = minFee + ((maxFee - minFee) × (365 - day)) / 364</code>',
+      `<b>Current inputs:</b> minFee=${minFee.toFixed(6)}, maxFee=${maxFee.toFixed(6)}, day=${termDays}`,
+      `<b>Computed fee:</b> ${selectedFee.toFixed(6)} IOTA`,
+    ].join('<br/>');
+
+    if (simStateNote) {
+      simStateNote.textContent = `Formula-implied max term from rank is ${fmt(impliedMaxTerm)} days. AMP is locked to the current protocol value in this simulator.`;
     }
 
-    const avgFee = (minFee + maxFee) / 2;
-    const now = rewardScore(globalRank, userRank, termDays);
-    const later = rewardScore(globalRank + 100000, userRank + 100000, termDays);
-    const scoreLiftPct = later.score > 0 ? ((now.score - later.score) / later.score) * 100 : 0;
-    const currentMaxSelectableTerm = freeMintTermLimitForRank(globalRank);
+    if (feeNote) feeNote.textContent = 'Fee model shown above is currently UI policy simulation, not enforced on-chain yet.';
+  };
 
-    const checkpoints = [1, 7, 30, 90, 180, 356, 365]
-      .map((d) => kpiEl(`Day ${d} fee`, `${feeAtTerm(d, minFee, maxFee, 365).toFixed(4)} IOTA`, true))
-      .join('');
-    feeBreakdown.innerHTML = checkpoints;
+  ['input', 'change'].forEach((evt) => {
+    rankInput.addEventListener(evt, update);
+    termInput.addEventListener(evt, update);
+    minInput.addEventListener(evt, update);
+    maxInput.addEventListener(evt, update);
+  });
 
-    if (summary) {
-      summary.textContent = `Short-term claim fee (Day 1): ${maxFee.toFixed(4)} IOTA • Long-term claim fee (Day 365): ${minFee.toFixed(4)} IOTA • Avg fee: ${avgFee.toFixed(4)} IOTA`;
-    }
+  update();
+}
 
-    if (feeMinNote) {
-      feeMinNote.textContent = 'Minimum-fee term in current calculator model: Day 365 (not Day 356).';
-    }
+function renderStakingPreview(state) {
+  const apyInput = document.querySelector('#stakeApyBps');
+  const amountInput = document.querySelector('#stakeAmount');
+  const termInput = document.querySelector('#stakeTermDays');
+  const output = document.querySelector('#stakingOutput');
+  const note = document.querySelector('#stakingNote');
 
-    if (feeSelectableNote) {
-      const canPick356 = currentMaxSelectableTerm >= 356;
-      const canPick365 = currentMaxSelectableTerm >= 365;
-      feeSelectableNote.textContent = `Selectable term limit at current rank: ${fmt(currentMaxSelectableTerm)} days • Day 356 selectable: ${canPick356 ? 'yes' : 'no'} • Day 365 selectable: ${canPick365 ? 'yes' : 'no'}`;
-    }
+  if (!apyInput || !amountInput || !termInput || !output) return;
 
-    if (rankSummary) {
-      rankSummary.textContent = `Your rank: ${fmt(userRank)} • Rank delta: ${fmt(now.rankDelta)} • Early-rank bonus (EAA): ${fmtPct(now.eaa * 100)} • Relative reward score vs +100k later cohort: ${fmtPct(scoreLiftPct)}`;
+  const apyBps = Math.max(0, Math.floor(Number(state.apyBps || 0)));
+  apyInput.value = String(apyBps);
+  apyInput.readOnly = true;
+
+  const update = () => {
+    const principal = Math.max(0, Number(String(amountInput.value || '0').replace(/,/g, '.')) || 0);
+    const termDays = Math.max(1, Math.min(1000, Math.floor(Number(termInput.value || 365))));
+    termInput.value = String(termDays);
+
+    const rate = apyBps / 10_000;
+    const reward = principal * rate * (termDays / 365);
+    const total = principal + reward;
+    const rawApprox = parseUnits(String(principal), TOKEN_DECIMALS);
+
+    output.innerHTML = [
+      `<b>Staked principal:</b> ${fmtDec(principal)} XENI`,
+      `<b>APY context:</b> ${fmt(apyBps)} bps (${(rate * 100).toFixed(2)}% yearly)`,
+      `<b>Term:</b> ${fmt(termDays)} days`,
+      `<b>Estimated reward:</b> ${fmtDec(reward)} XENI`,
+      `<b>Estimated total at maturity:</b> ${fmtDec(total)} XENI`,
+      `<b>Raw amount used on-chain:</b> ${rawApprox ? fmt(rawApprox.toString()) : '-'}`,
+    ].join('<br/>');
+
+    if (note) {
+      note.textContent = 'Preview uses a simple linear estimate for readability. Stake input is in human XENI, converted to 18-decimal raw units for transaction build.';
     }
   };
 
   ['input', 'change'].forEach((evt) => {
-    minInput.addEventListener(evt, update);
-    maxInput.addEventListener(evt, update);
-    globalInput.addEventListener(evt, update);
-    userInput.addEventListener(evt, update);
+    amountInput.addEventListener(evt, update);
     termInput.addEventListener(evt, update);
   });
 
   update();
 }
 
-function renderScenarioTable(data) {
-  const rowsEl = document.querySelector('#scenarioRows');
-  if (!rowsEl) return;
+function setupToolTabs() {
+  const mintBtn = document.querySelector('#tabMint');
+  const stakingBtn = document.querySelector('#tabStaking');
+  const mintPanel = document.querySelector('#panelMint');
+  const stakingPanel = document.querySelector('#panelStaking');
 
-  const cards = data.attackCards || [];
-  const rows = cards
-    .map((c) => {
-      const driftClass = Number(c.driftPct) <= 0 ? 'good' : 'bad';
-      return `
-        <tr>
-          <td>${scenarioLabel(c.scenarioName)}</td>
-          <td>${fmt(c.totalNet)}</td>
-          <td>${fmt(c.totalStakeReward)}</td>
-          <td>${fmtPct(c.avgPenalty)}</td>
-          <td class="attack-drift ${driftClass}">${fmtPct(c.driftPct)}</td>
-        </tr>
-      `;
-    })
-    .join('');
+  if (!mintBtn || !stakingBtn || !mintPanel || !stakingPanel) return;
 
-  rowsEl.innerHTML = rows || '<tr><td colspan="5">No scenario rows yet.</td></tr>';
+  const activate = (kind) => {
+    const mintActive = kind === 'mint';
+
+    mintBtn.classList.toggle('active', mintActive);
+    mintBtn.setAttribute('aria-selected', mintActive ? 'true' : 'false');
+
+    stakingBtn.classList.toggle('active', !mintActive);
+    stakingBtn.setAttribute('aria-selected', mintActive ? 'false' : 'true');
+
+    mintPanel.classList.toggle('active', mintActive);
+    stakingPanel.classList.toggle('active', !mintActive);
+
+    if (mintActive) {
+      mintPanel.removeAttribute('hidden');
+      stakingPanel.setAttribute('hidden', '');
+    } else {
+      stakingPanel.removeAttribute('hidden');
+      mintPanel.setAttribute('hidden', '');
+    }
+  };
+
+  mintBtn.addEventListener('click', () => activate('mint'));
+  stakingBtn.addEventListener('click', () => activate('staking'));
+  activate('mint');
 }
 
-function renderClaims(data) {
-  const rows = data.defaultScenario?.topClaims || [];
-  const html = rows
-    .map(
-      (r) => `
-      <tr>
-        <td>${r.user}</td>
-        <td>${fmt(r.cRank)}</td>
-        <td>${fmt(r.netReward)}</td>
-        <td>${fmt(r.grossReward)}</td>
-        <td>${fmtPct(r.penaltyPct)}</td>
-        <td>${fmt(r.settleDay)}</td>
-      </tr>
-    `,
-    )
-    .join('');
+async function fetchOwnedObjects(address, maxPages = 4) {
+  const query = { options: { showType: true, showContent: true } };
+  const objects = [];
+  let cursor = null;
+  let pageCount = 0;
 
-  document.querySelector('#claimsRows').innerHTML = html;
+  while (pageCount < maxPages) {
+    const owned = await rpcCall('iotax_getOwnedObjects', [address, query, cursor, 50]);
+    const page = owned?.data || [];
+    objects.push(...page);
+    pageCount += 1;
+
+    if (!owned?.hasNextPage || !owned?.nextCursor) break;
+    cursor = owned.nextCursor;
+  }
+
+  return objects;
+}
+
+async function renderStakeList(address, state) {
+  const listEl = document.querySelector('#stakeList');
+  const txStatus = document.querySelector('#stakeTxStatus');
+  if (!listEl) return;
+
+  if (!address) {
+    listEl.innerHTML = '<div class="stake-item">Connect wallet to view your stakes.</div>';
+    if (txStatus) txStatus.textContent = 'Connect wallet to enable staking.';
+    return;
+  }
+
+  listEl.innerHTML = '<div class="stake-item">Loading stake receipts...</div>';
+
+  try {
+    const packageId = state.packageId || CHAIN_CONFIG.packageId;
+    const objects = await fetchOwnedObjects(address, 6);
+    const stakes = objects
+      .filter((o) => String(o?.data?.type || '').endsWith('::xen::StakeReceipt'))
+      .map((o) => {
+        const f = o?.data?.content?.fields || {};
+        const principalRaw = BigInt(String(f.principal || '0'));
+        const principal = Number(formatUnits(principalRaw, TOKEN_DECIMALS, 6));
+        const termDays = Number(f.term_days || 0);
+        const apyBps = Number(f.apy_bps || 0);
+        const maturityMs = Number(f.maturity_ts_ms || 0);
+        const nowMs = Date.now();
+        const matured = nowMs >= maturityMs;
+        const daysToMaturity = Math.max(0, Math.ceil((maturityMs - nowMs) / DAY_MS));
+        const estReward = estimateStakeReward(principal, apyBps, termDays);
+        return {
+          id: f?.id?.id || o?.data?.objectId || '-',
+          principalRaw,
+          principal,
+          termDays,
+          apyBps,
+          maturityMs,
+          matured,
+          daysToMaturity,
+          estReward,
+          packageMatch: String(o?.data?.type || '').startsWith(String(packageId)),
+        };
+      });
+
+    if (!stakes.length) {
+      listEl.innerHTML = '<div class="stake-item">No active stake receipts found.</div>';
+      return;
+    }
+
+    listEl.innerHTML = stakes
+      .map((s) => {
+        const status = s.matured ? 'Matured' : `Active - ${fmt(s.daysToMaturity)} day(s) left`;
+        const maturityText = new Date(s.maturityMs).toLocaleString();
+        const canWithdraw = s.matured && s.packageMatch && s.id && s.id !== '-';
+        const action = canWithdraw
+          ? `<button class="btn primary withdraw-stake-btn" type="button" data-receipt-id="${s.id}">Withdraw</button>`
+          : `<button class="btn ghost" type="button" disabled>${s.matured ? 'Withdraw unavailable' : 'Withdraw at maturity'}</button>`;
+
+        return `
+          <div class="stake-item">
+            <b>Status:</b> ${status}<br/>
+            <b>Principal:</b> ${fmtDec(s.principal)} XENI<br/>
+            <b>Principal (raw):</b> ${fmt(s.principalRaw.toString())}<br/>
+            <b>Term:</b> ${fmt(s.termDays)} days<br/>
+            <b>APY:</b> ${fmt(s.apyBps)} bps<br/>
+            <b>Estimated reward:</b> ${fmtDec(s.estReward)} XENI<br/>
+            <b>Maturity:</b> ${maturityText}<br/>
+            <b>Receipt:</b> <code>${s.id}</code>${s.packageMatch ? '' : ' <span class="claim-warn">(different package)</span>'}
+            <div class="stake-item-actions">${action}</div>
+          </div>
+        `;
+      })
+      .join('');
+  } catch (err) {
+    listEl.innerHTML = `<div class="stake-item">Failed to load stakes: ${err?.message || err}</div>`;
+  }
+}
+
+async function renderStakeCoinOptions(address, state) {
+  const selectEl = document.querySelector('#stakeCoinSelect');
+  const stakeBtn = document.querySelector('#stakeNowBtn');
+  if (!selectEl) return;
+
+  if (!address) {
+    selectEl.innerHTML = '<option value="">Connect wallet first</option>';
+    if (stakeBtn) stakeBtn.disabled = true;
+    return;
+  }
+
+  selectEl.innerHTML = '<option value="">Loading XENI coins...</option>';
+
+  try {
+    const packageId = state.packageId || CHAIN_CONFIG.packageId;
+    const coinType = `${packageId}::xen::XEN`;
+    const coins = await rpcCall('iotax_getCoins', [address, coinType, null, 50]);
+    const data = coins?.data || [];
+
+    if (!data.length) {
+      selectEl.innerHTML = '<option value="">No XENI coin objects found</option>';
+      if (stakeBtn) stakeBtn.disabled = true;
+      return;
+    }
+
+    selectEl.innerHTML = data
+      .map((c, i) => {
+        const id = c.coinObjectId || c.objectId || '';
+        const balRaw = String(c.balance || '0');
+        const balHuman = formatUnits(balRaw, TOKEN_DECIMALS, 6);
+        const short = `${id.slice(0, 8)}...${id.slice(-6)}`;
+        return `<option value="${id}" ${i === 0 ? 'selected' : ''}>${short} · balance: ${balHuman} XENI</option>`;
+      })
+      .join('');
+
+    if (stakeBtn) stakeBtn.disabled = false;
+  } catch (err) {
+    selectEl.innerHTML = `<option value="">Failed to load coins: ${(err?.message || err).replace(/"/g, '&quot;')}</option>`;
+    if (stakeBtn) stakeBtn.disabled = true;
+  }
+}
+
+async function executeStakeTx(state) {
+  const session = APP_STATE.walletSession;
+  const statusEl = document.querySelector('#stakeTxStatus');
+  const amountInput = document.querySelector('#stakeAmount');
+  const termInput = document.querySelector('#stakeTermDays');
+  const coinSelect = document.querySelector('#stakeCoinSelect');
+  const stakeBtn = document.querySelector('#stakeNowBtn');
+
+  if (!session?.wallet || !session?.account) {
+    if (statusEl) statusEl.textContent = 'Connect wallet first.';
+    return;
+  }
+  if (!amountInput || !termInput || !coinSelect) return;
+
+  const amountHumanText = String(amountInput.value || '').trim().replace(/,/g, '.');
+  const amountRaw = parseUnits(amountHumanText, TOKEN_DECIMALS);
+  const termDays = Math.floor(Number(termInput.value || 0));
+  const coinId = String(coinSelect.value || '').trim();
+
+  if (!coinId) {
+    if (statusEl) statusEl.textContent = 'Select a XENI coin object.';
+    return;
+  }
+  if (!amountRaw || amountRaw <= 0n) {
+    if (statusEl) statusEl.textContent = 'Enter a valid stake amount in XENI (e.g., 1.25).';
+    return;
+  }
+  if (amountRaw > U64_MAX) {
+    if (statusEl) statusEl.textContent = 'Stake amount is too large for u64.';
+    return;
+  }
+  if (termDays < 1 || termDays > 1000) {
+    if (statusEl) statusEl.textContent = 'Stake term must be between 1 and 1000 days.';
+    return;
+  }
+
+  try {
+    if (stakeBtn) stakeBtn.disabled = true;
+    if (statusEl) statusEl.textContent = `Preparing stake transaction for ${amountHumanText} XENI...`;
+
+    const { Transaction } = await import('https://esm.sh/@iota/iota-sdk/transactions');
+    const tx = new Transaction();
+
+    tx.moveCall({
+      target: `${state.packageId || CHAIN_CONFIG.packageId}::xen::stake`,
+      arguments: [
+        tx.object(CHAIN_CONFIG.protocolId),
+        tx.object(CHAIN_CONFIG.clockId),
+        tx.object(coinId),
+        tx.pure.u64(amountRaw),
+        tx.pure.u64(termDays),
+      ],
+    });
+
+    const signer = session.wallet.features?.['iota:signAndExecuteTransaction'];
+    if (!signer?.signAndExecuteTransaction) throw new Error('Wallet does not support signAndExecuteTransaction');
+
+    if (statusEl) statusEl.textContent = 'Awaiting wallet signature...';
+    const res = await signer.signAndExecuteTransaction({
+      transaction: tx,
+      account: session.account,
+      chain: session.chain || CHAIN_ID,
+      options: { showEffects: true },
+    });
+
+    if (statusEl) {
+      statusEl.textContent = `Stake submitted. Digest: ${res?.digest || 'submitted'}`;
+    }
+
+    await renderStakeCoinOptions(session.address, state);
+    await renderStakeList(session.address, state);
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `Stake failed: ${err?.message || err}`;
+  } finally {
+    if (stakeBtn) stakeBtn.disabled = false;
+  }
+}
+
+async function executeWithdrawTx(state, receiptId, triggerBtn) {
+  const session = APP_STATE.walletSession;
+  const statusEl = document.querySelector('#stakeTxStatus');
+
+  if (!session?.wallet || !session?.account) {
+    if (statusEl) statusEl.textContent = 'Connect wallet first.';
+    return;
+  }
+  if (!receiptId) {
+    if (statusEl) statusEl.textContent = 'Missing stake receipt id.';
+    return;
+  }
+
+  try {
+    if (triggerBtn) triggerBtn.disabled = true;
+    if (statusEl) statusEl.textContent = 'Preparing withdraw transaction...';
+
+    const { Transaction } = await import('https://esm.sh/@iota/iota-sdk/transactions');
+    const tx = new Transaction();
+
+    tx.moveCall({
+      target: `${state.packageId || CHAIN_CONFIG.packageId}::xen::withdraw`,
+      arguments: [
+        tx.object(CHAIN_CONFIG.protocolId),
+        tx.object(CHAIN_CONFIG.clockId),
+        tx.object(receiptId),
+      ],
+    });
+
+    const signer = session.wallet.features?.['iota:signAndExecuteTransaction'];
+    if (!signer?.signAndExecuteTransaction) throw new Error('Wallet does not support signAndExecuteTransaction');
+
+    if (statusEl) statusEl.textContent = 'Awaiting wallet signature...';
+    const res = await signer.signAndExecuteTransaction({
+      transaction: tx,
+      account: session.account,
+      chain: session.chain || CHAIN_ID,
+      options: { showEffects: true },
+    });
+
+    if (statusEl) {
+      statusEl.textContent = `Withdraw submitted. Digest: ${res?.digest || 'submitted'}`;
+    }
+
+    await renderStakeCoinOptions(session.address, state);
+    await renderStakeList(session.address, state);
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `Withdraw failed: ${err?.message || err}`;
+  } finally {
+    if (triggerBtn) triggerBtn.disabled = false;
+  }
+}
+
+function setupStakingUi(state) {
+  const refreshBtn = document.querySelector('#refreshStakeCoins');
+  const stakeBtn = document.querySelector('#stakeNowBtn');
+  const stakeList = document.querySelector('#stakeList');
+
+  if (refreshBtn && !refreshBtn.dataset.bound) {
+    refreshBtn.dataset.bound = '1';
+    refreshBtn.addEventListener('click', async () => {
+      const session = APP_STATE.walletSession;
+      await renderStakeCoinOptions(session?.address || null, state);
+      await renderStakeList(session?.address || null, state);
+    });
+  }
+
+  if (stakeBtn && !stakeBtn.dataset.bound) {
+    stakeBtn.dataset.bound = '1';
+    stakeBtn.addEventListener('click', async () => {
+      await executeStakeTx(state);
+    });
+  }
+
+  if (stakeList && !stakeList.dataset.bound) {
+    stakeList.dataset.bound = '1';
+    stakeList.addEventListener('click', async (e) => {
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      const btn = target.closest('.withdraw-stake-btn');
+      if (!btn) return;
+
+      const receiptId = String(btn.getAttribute('data-receipt-id') || '').trim();
+      await executeWithdrawTx(state, receiptId, btn);
+    });
+  }
+}
+
+async function renderClaimStatus(address, state) {
+  const hintEl = document.querySelector('#claimsHint');
+  const pendingEl = document.querySelector('#pendingClaims');
+  const claimableEl = document.querySelector('#claimableClaims');
+  if (!hintEl || !pendingEl || !claimableEl) return;
+
+  if (!address) {
+    hintEl.textContent = 'Connect wallet to load your mint receipt status.';
+    pendingEl.textContent = '-';
+    claimableEl.textContent = '-';
+    return;
+  }
+
+  hintEl.textContent = `Loading claim status for ${address}...`;
+
+  try {
+    const packageId = state.packageId || CHAIN_CONFIG.packageId;
+    const objects = await fetchOwnedObjects(address, 6);
+
+    const receipt = objects.find((o) => String(o?.data?.type || '').endsWith('::xen::MintReceipt'));
+    if (!receipt) {
+      hintEl.textContent = 'No active mint receipt found for this wallet.';
+      pendingEl.textContent = 'None';
+      claimableEl.textContent = 'None';
+      return;
+    }
+
+    const f = receipt?.data?.content?.fields || {};
+    const cRank = Number(f.c_rank || 0);
+    const termDays = Number(f.term_days || 0);
+    const maturityMs = Number(f.maturity_ts_ms || 0);
+    const ampAtClaim = Number(f.amp_at_claim || 0);
+
+    const nowMs = Date.now();
+    const dayMs = 86_400_000;
+
+    if (nowMs < maturityMs) {
+      const remainingDays = Math.ceil((maturityMs - nowMs) / dayMs);
+      hintEl.textContent = 'You have an active mint receipt that is not matured yet.';
+      pendingEl.innerHTML = `
+        <div class="claim-warn"><b>Pending</b></div>
+        cRank: ${fmt(cRank)}<br/>
+        Term: ${fmt(termDays)} days<br/>
+        AMP at claim: ${fmt(ampAtClaim)}<br/>
+        Matures in: ${fmt(remainingDays)} day(s)
+      `;
+      claimableEl.textContent = 'None yet';
+    } else {
+      const daysLate = Math.floor((nowMs - maturityMs) / dayMs);
+      const penalty = latePenaltyPct(daysLate);
+      hintEl.textContent = 'You have a matured receipt. Claim timing penalty depends on lateness.';
+      pendingEl.textContent = 'None';
+      claimableEl.innerHTML = `
+        <div class="claim-ok"><b>Claimable now</b></div>
+        cRank: ${fmt(cRank)}<br/>
+        Term: ${fmt(termDays)} days<br/>
+        AMP at claim: ${fmt(ampAtClaim)}<br/>
+        Days late: ${fmt(daysLate)}<br/>
+        Current penalty band: ${penalty}%
+      `;
+    }
+
+    // Explicitly note protocol package used for lookup when useful.
+    if (!String(receipt?.data?.type || '').startsWith(String(packageId))) {
+      hintEl.textContent += ' (note: receipt package differs from configured package id)';
+    }
+  } catch (err) {
+    console.error('Claim status read failed', err);
+    hintEl.textContent = 'Claim status read failed. Please reconnect wallet and try again.';
+    pendingEl.textContent = 'Unavailable';
+    claimableEl.textContent = 'Unavailable';
+  }
+}
+
+async function setupWalletConnection(onSessionChange) {
+  const statusEl = document.querySelector('#walletStatus');
+  const connectBtn = document.querySelector('#connectWalletBtn');
+  const disconnectBtn = document.querySelector('#disconnectWalletBtn');
+  const addressEl = document.querySelector('#connectedAddress');
+
+  if (!statusEl || !connectBtn || !disconnectBtn || !addressEl) return;
+
+  const emitSession = (session) => {
+    APP_STATE.walletSession = session || null;
+    if (typeof onSessionChange === 'function') onSessionChange(APP_STATE.walletSession);
+  };
+
+  const setStatus = (t) => (statusEl.textContent = t);
+  let currentWallet = null;
+  let wallets = [];
+
+  let getWallets;
+  try {
+    ({ getWallets } = await import('https://esm.sh/@wallet-standard/app@1.1.0'));
+  } catch {
+    setStatus('Wallet module failed to load. Refresh and try again.');
+    return;
+  }
+
+  const api = getWallets();
+
+  const refresh = () => {
+    wallets = (api.get() || []).filter((w) => Array.from(w.chains || []).some((c) => String(c).startsWith('iota:')));
+
+    if (!wallets.length) {
+      connectBtn.disabled = true;
+      disconnectBtn.disabled = true;
+      setStatus('No compatible IOTA wallet found. Open/enable extension for localhost and refresh.');
+      emitSession(null);
+      return;
+    }
+
+    connectBtn.disabled = false;
+    disconnectBtn.disabled = !currentWallet;
+    if (!currentWallet) {
+      const primary = wallets[0]?.name || 'wallet';
+      const more = wallets.length > 1 ? ` (+${wallets.length - 1} more detected)` : '';
+      setStatus(`Wallet detected: ${primary}${more}. Click Connect.`);
+    }
+  };
+
+  connectBtn.onclick = async () => {
+    const target = wallets[0];
+    if (!target) {
+      setStatus('No compatible wallet detected.');
+      return;
+    }
+
+    try {
+      const connectFeature = target.features?.['standard:connect'];
+      if (!connectFeature?.connect) throw new Error('Wallet does not support connect');
+      const res = await connectFeature.connect();
+      const acc = res?.accounts?.[0] || target.accounts?.[0];
+      if (!acc) throw new Error('No account returned');
+      currentWallet = target;
+      addressEl.textContent = acc.address;
+      disconnectBtn.disabled = false;
+      setStatus(`Connected: ${target.name}`);
+
+      const session = {
+        wallet: target,
+        account: acc,
+        address: acc.address,
+        chain: (Array.from(acc.chains || []).find((c) => String(c).startsWith('iota:')) || CHAIN_ID),
+      };
+      emitSession(session);
+    } catch (e) {
+      setStatus(`Connect failed: ${e?.message || e}`);
+    }
+  };
+
+  disconnectBtn.onclick = async () => {
+    try {
+      const f = currentWallet?.features?.['standard:disconnect'];
+      if (f?.disconnect) await f.disconnect();
+    } finally {
+      currentWallet = null;
+      addressEl.textContent = '-';
+      disconnectBtn.disabled = true;
+      emitSession(null);
+      refresh();
+      if (!wallets.length) setStatus('Disconnected.');
+    }
+  };
+
+  api.on('register', refresh);
+  api.on('unregister', refresh);
+  refresh();
 }
 
 async function main() {
-  const res = await fetch('./data/latest.json');
-  if (!res.ok) throw new Error('Missing ./data/latest.json. Run: node xen-iota-move/scripts/build-web-data.mjs');
-  const data = await res.json();
-
-  let onchain = null;
+  let state;
   try {
-    onchain = await fetchOnchainState();
-  } catch (err) {
-    console.warn('On-chain metric read failed, using simulation fallback:', err);
+    state = await fetchOnchainState();
+    renderSnapshot(state, 'ON-CHAIN');
+  } catch {
+    const res = await fetch('./data/latest.json');
+    const data = await res.json();
+    const tl = data?.defaultScenario?.timelineSample || [];
+    const latest = tl[tl.length - 1] || {};
+    const rank = Number(data?.defaultScenario?.finalGlobalRank || 0);
+
+    state = {
+      source: 'simulation',
+      globalRank: rank,
+      maxTerm: freeMintTermLimitForRank(rank),
+      amp: Number(latest.amp || 0),
+      apyBps: Number(latest.apyBps || 0),
+    };
+    renderSnapshot(state, 'SIMULATION FALLBACK');
   }
 
-  renderHeroStage(data);
-  renderKpis(data, onchain);
-  renderLiveMetricReadback(data, onchain);
-  renderFeeSimulatorChart(data, onchain);
-  renderScenarioTable(data);
-  renderClaims(data);
-  await setupWalletConnection();
+  APP_STATE.protocol = state;
+
+  renderFeeSimulator(state);
+  renderStakingPreview(state);
+  setupToolTabs();
+  setupStakingUi(state);
+
+  await renderClaimStatus(null, state);
+  await renderStakeCoinOptions(null, state);
+  await renderStakeList(null, state);
+
+  await setupWalletConnection((session) => {
+    const address = session?.address || null;
+    renderClaimStatus(address, state);
+    renderStakeCoinOptions(address, state);
+    renderStakeList(address, state);
+  });
+
+  setText('#stamp', `Updated: ${new Date().toLocaleString()}`);
 }
 
 main().catch((err) => {
   console.error(err);
-  const stamp = document.querySelector('#stamp');
-  if (stamp) stamp.textContent = String(err.message || err);
+  setText('#walletStatus', `Error: ${err?.message || err}`);
 });

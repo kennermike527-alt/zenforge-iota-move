@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>XENFORGE — Landing</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Public+Sans:wght@400;500;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="./landing.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div class="mark-wrap">
+          <span class="mark-glow" aria-hidden="true"></span>
+          <img src="./assets/zenforge-logo-cutout.png" alt="XENFORGE logo" class="mark" />
+        </div>
+        <p class="eyebrow">XENFORGE · IOTA MOVE</p>
+        <h1>Forging value, one mint at a time.</h1>
+        <p class="lead">Mechanics-first interface for protocol readback, claim visibility, fee planning, and staking previews.</p>
+
+        <div class="cta-row">
+          <a class="btn primary" href="./index.html">Enter App</a>
+          <a class="btn ghost" href="./index.html#faq">Read FAQ</a>
+        </div>
+
+        <ul class="highlights">
+          <li>Live on-chain metric readback (with fallback visibility)</li>
+          <li>Pending vs claimable status from wallet-connected receipts</li>
+          <li>Mint + Staking tool tabs with clean separation</li>
+        </ul>
+      </section>
+    </main>
+
+    <div id="cursorGlow" class="cursor-glow" aria-hidden="true"></div>
+    <div id="cursorDot" class="cursor-dot" aria-hidden="true"></div>
+
+    <script type="module" src="./landing.js"></script>
+  </body>
+</html>
