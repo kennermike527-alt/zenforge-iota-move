@@ -757,27 +757,21 @@ function syncMintUiState() {
   if (!session) {
     mintBtn.disabled = true;
     claimBtn.disabled = true;
-    statusEl.textContent = 'Connect wallet to enable mint actions.';
+    statusEl.textContent = '';
     return;
   }
 
   if (!receipt) {
     mintBtn.disabled = false;
     claimBtn.disabled = true;
-    statusEl.textContent = 'No active mint receipt. Start a mint to create one.';
+    statusEl.textContent = '';
     return;
   }
 
   // Active mint exists -> prevent starting another mint until current receipt is claimed.
   mintBtn.disabled = true;
   claimBtn.disabled = !receipt.matured;
-
-  if (!receipt.matured) {
-    const daysLeft = Math.max(0, Math.ceil((receipt.maturityMs - Date.now()) / DAY_MS));
-    statusEl.textContent = `Active mint receipt already exists. Start mint is locked. Claim unlocks in ~${fmt(daysLeft)} day(s).`;
-  } else {
-    statusEl.textContent = 'Matured mint receipt ready. Claim mint reward to unlock the next mint.';
-  }
+  statusEl.textContent = '';
 }
 
 async function executeClaimRankTx(state) {

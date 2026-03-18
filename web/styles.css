@@ -563,6 +563,10 @@ ul {
   flex-wrap: wrap;
 }
 
+#mintTxStatus:empty {
+  display: none;
+}
+
 .stakes-title {
   margin-top: 14px;
 }
