@@ -95,6 +95,12 @@
             <label>Max fee (IOTA)<input id="simMaxFee" type="number" min="0" step="0.001" value="0.05" /></label>
           </div>
 
+          <div class="mint-actions">
+            <button id="mintNowBtn" class="btn primary" type="button">Start mint (claim rank)</button>
+            <button id="claimMintBtn" class="btn ghost" type="button" disabled>Claim mint reward</button>
+            <span id="mintTxStatus" class="subtle">Connect wallet to enable mint actions.</span>
+          </div>
+
           <div id="feeOutput" class="output-box">Loading simulator...</div>
           <div id="feeFormulaOutput" class="output-box">Loading fee formula...</div>
 

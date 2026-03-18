@@ -540,6 +540,7 @@ ul {
   align-items: center;
 }
 
+.mint-actions,
 .stake-actions {
   margin-top: 10px;
   display: flex;

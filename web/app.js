@@ -24,6 +24,7 @@ const U64_MAX = 18_446_744_073_709_551_615n;
 const APP_STATE = {
   protocol: null,
   walletSession: null,
+  activeMintReceipt: null,
 };
 
 function fmtDec(n, max = 6) {
@@ -630,6 +631,202 @@ function setupStakingUi(state) {
   }
 }
 
+async function loadActiveMintReceipt(address, state) {
+  if (!address) return null;
+  const packageId = state.packageId || CHAIN_CONFIG.packageId;
+  const objects = await fetchOwnedObjects(address, 6);
+  const receipt = objects.find((o) => String(o?.data?.type || '').endsWith('::xen::MintReceipt'));
+  if (!receipt) return null;
+
+  const f = receipt?.data?.content?.fields || {};
+  const maturityMs = Number(f.maturity_ts_ms || 0);
+  const nowMs = Date.now();
+
+  return {
+    id: f?.id?.id || receipt?.data?.objectId || '-',
+    cRank: Number(f.c_rank || 0),
+    termDays: Number(f.term_days || 0),
+    maturityMs,
+    ampAtClaim: Number(f.amp_at_claim || 0),
+    matured: nowMs >= maturityMs,
+    packageMatch: String(receipt?.data?.type || '').startsWith(String(packageId)),
+  };
+}
+
+function syncMintUiState() {
+  const mintBtn = document.querySelector('#mintNowBtn');
+  const claimBtn = document.querySelector('#claimMintBtn');
+  const statusEl = document.querySelector('#mintTxStatus');
+
+  if (!mintBtn || !claimBtn || !statusEl) return;
+
+  const session = APP_STATE.walletSession;
+  const receipt = APP_STATE.activeMintReceipt;
+
+  if (!session) {
+    mintBtn.disabled = true;
+    claimBtn.disabled = true;
+    statusEl.textContent = 'Connect wallet to enable mint actions.';
+    return;
+  }
+
+  mintBtn.disabled = false;
+
+  if (!receipt) {
+    claimBtn.disabled = true;
+    statusEl.textContent = 'No active mint receipt. Start a mint to create one.';
+    return;
+  }
+
+  claimBtn.disabled = !receipt.matured;
+
+  if (!receipt.matured) {
+    const daysLeft = Math.max(0, Math.ceil((receipt.maturityMs - Date.now()) / DAY_MS));
+    statusEl.textContent = `Active mint receipt detected. Claim unlocks in ~${fmt(daysLeft)} day(s).`;
+  } else {
+    statusEl.textContent = 'Matured mint receipt ready. You can claim mint reward now.';
+  }
+}
+
+async function executeClaimRankTx(state) {
+  const session = APP_STATE.walletSession;
+  const statusEl = document.querySelector('#mintTxStatus');
+  const termInput = document.querySelector('#simTermDays');
+  const mintBtn = document.querySelector('#mintNowBtn');
+
+  if (!session?.wallet || !session?.account) {
+    if (statusEl) statusEl.textContent = 'Connect wallet first.';
+    return;
+  }
+  if (!termInput) return;
+
+  let termDays = Math.floor(Number(termInput.value || 0));
+  termDays = Math.max(1, Math.min(100, termDays));
+  termInput.value = String(termDays);
+
+  try {
+    if (mintBtn) mintBtn.disabled = true;
+    if (statusEl) statusEl.textContent = `Preparing mint tx (term ${termDays} days)...`;
+
+    const { Transaction } = await import('https://esm.sh/@iota/iota-sdk/transactions');
+    const tx = new Transaction();
+
+    tx.moveCall({
+      target: `${state.packageId || CHAIN_CONFIG.packageId}::xen::claim_rank`,
+      arguments: [
+        tx.object(CHAIN_CONFIG.protocolId),
+        tx.object(CHAIN_CONFIG.clockId),
+        tx.pure.u64(termDays),
+      ],
+    });
+
+    const signer = session.wallet.features?.['iota:signAndExecuteTransaction'];
+    if (!signer?.signAndExecuteTransaction) throw new Error('Wallet does not support signAndExecuteTransaction');
+
+    if (statusEl) statusEl.textContent = 'Awaiting wallet signature...';
+    const res = await signer.signAndExecuteTransaction({
+      transaction: tx,
+      account: session.account,
+      chain: session.chain || CHAIN_ID,
+      options: { showEffects: true },
+    });
+
+    if (statusEl) statusEl.textContent = `Mint submitted. Digest: ${res?.digest || 'submitted'}`;
+
+    await renderClaimStatus(session.address, state);
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `Mint failed: ${err?.message || err}`;
+  } finally {
+    if (mintBtn) mintBtn.disabled = false;
+    syncMintUiState();
+  }
+}
+
+async function executeClaimMintRewardTx(state) {
+  const session = APP_STATE.walletSession;
+  const statusEl = document.querySelector('#mintTxStatus');
+  const claimBtn = document.querySelector('#claimMintBtn');
+
+  if (!session?.wallet || !session?.account) {
+    if (statusEl) statusEl.textContent = 'Connect wallet first.';
+    return;
+  }
+
+  try {
+    if (claimBtn) claimBtn.disabled = true;
+
+    let receipt = APP_STATE.activeMintReceipt;
+    if (!receipt) {
+      receipt = await loadActiveMintReceipt(session.address, state);
+      APP_STATE.activeMintReceipt = receipt;
+    }
+    if (!receipt) {
+      if (statusEl) statusEl.textContent = 'No active mint receipt found.';
+      return;
+    }
+    if (!receipt.matured) {
+      if (statusEl) statusEl.textContent = 'Mint receipt not matured yet.';
+      return;
+    }
+
+    if (statusEl) statusEl.textContent = 'Preparing claim reward transaction...';
+
+    const { Transaction } = await import('https://esm.sh/@iota/iota-sdk/transactions');
+    const tx = new Transaction();
+
+    tx.moveCall({
+      target: `${state.packageId || CHAIN_CONFIG.packageId}::xen::claim_mint_reward`,
+      arguments: [
+        tx.object(CHAIN_CONFIG.protocolId),
+        tx.object(CHAIN_CONFIG.clockId),
+        tx.object(receipt.id),
+      ],
+    });
+
+    const signer = session.wallet.features?.['iota:signAndExecuteTransaction'];
+    if (!signer?.signAndExecuteTransaction) throw new Error('Wallet does not support signAndExecuteTransaction');
+
+    if (statusEl) statusEl.textContent = 'Awaiting wallet signature...';
+    const res = await signer.signAndExecuteTransaction({
+      transaction: tx,
+      account: session.account,
+      chain: session.chain || CHAIN_ID,
+      options: { showEffects: true },
+    });
+
+    if (statusEl) statusEl.textContent = `Claim submitted. Digest: ${res?.digest || 'submitted'}`;
+
+    await renderClaimStatus(session.address, state);
+    await renderStakeCoinOptions(session.address, state);
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `Claim failed: ${err?.message || err}`;
+  } finally {
+    if (claimBtn) claimBtn.disabled = false;
+    syncMintUiState();
+  }
+}
+
+function setupMintUi(state) {
+  const mintBtn = document.querySelector('#mintNowBtn');
+  const claimBtn = document.querySelector('#claimMintBtn');
+
+  if (mintBtn && !mintBtn.dataset.bound) {
+    mintBtn.dataset.bound = '1';
+    mintBtn.addEventListener('click', async () => {
+      await executeClaimRankTx(state);
+    });
+  }
+
+  if (claimBtn && !claimBtn.dataset.bound) {
+    claimBtn.dataset.bound = '1';
+    claimBtn.addEventListener('click', async () => {
+      await executeClaimMintRewardTx(state);
+    });
+  }
+
+  syncMintUiState();
+}
+
 async function renderClaimStatus(address, state) {
   const hintEl = document.querySelector('#claimsHint');
   const pendingEl = document.querySelector('#pendingClaims');
@@ -637,37 +834,33 @@ async function renderClaimStatus(address, state) {
   if (!hintEl || !pendingEl || !claimableEl) return;
 
   if (!address) {
+    APP_STATE.activeMintReceipt = null;
     hintEl.textContent = 'Connect wallet to load your mint receipt status.';
     pendingEl.textContent = '-';
     claimableEl.textContent = '-';
+    syncMintUiState();
     return;
   }
 
   hintEl.textContent = `Loading claim status for ${address}...`;
 
   try {
-    const packageId = state.packageId || CHAIN_CONFIG.packageId;
-    const objects = await fetchOwnedObjects(address, 6);
+    const receipt = await loadActiveMintReceipt(address, state);
+    APP_STATE.activeMintReceipt = receipt;
 
-    const receipt = objects.find((o) => String(o?.data?.type || '').endsWith('::xen::MintReceipt'));
     if (!receipt) {
       hintEl.textContent = 'No active mint receipt found for this wallet.';
       pendingEl.textContent = 'None';
       claimableEl.textContent = 'None';
+      syncMintUiState();
       return;
     }
 
-    const f = receipt?.data?.content?.fields || {};
-    const cRank = Number(f.c_rank || 0);
-    const termDays = Number(f.term_days || 0);
-    const maturityMs = Number(f.maturity_ts_ms || 0);
-    const ampAtClaim = Number(f.amp_at_claim || 0);
-
+    const { cRank, termDays, maturityMs, ampAtClaim } = receipt;
     const nowMs = Date.now();
-    const dayMs = 86_400_000;
 
     if (nowMs < maturityMs) {
-      const remainingDays = Math.ceil((maturityMs - nowMs) / dayMs);
+      const remainingDays = Math.ceil((maturityMs - nowMs) / DAY_MS);
       hintEl.textContent = 'You have an active mint receipt that is not matured yet.';
       pendingEl.innerHTML = `
         <div class="claim-warn"><b>Pending</b></div>
@@ -678,7 +871,7 @@ async function renderClaimStatus(address, state) {
       `;
       claimableEl.textContent = 'None yet';
     } else {
-      const daysLate = Math.floor((nowMs - maturityMs) / dayMs);
+      const daysLate = Math.floor((nowMs - maturityMs) / DAY_MS);
       const penalty = latePenaltyPct(daysLate);
       hintEl.textContent = 'You have a matured receipt. Claim timing penalty depends on lateness.';
       pendingEl.textContent = 'None';
@@ -692,15 +885,17 @@ async function renderClaimStatus(address, state) {
       `;
     }
 
-    // Explicitly note protocol package used for lookup when useful.
-    if (!String(receipt?.data?.type || '').startsWith(String(packageId))) {
+    if (!receipt.packageMatch) {
       hintEl.textContent += ' (note: receipt package differs from configured package id)';
     }
+    syncMintUiState();
   } catch (err) {
+    APP_STATE.activeMintReceipt = null;
     console.error('Claim status read failed', err);
     hintEl.textContent = 'Claim status read failed. Please reconnect wallet and try again.';
     pendingEl.textContent = 'Unavailable';
     claimableEl.textContent = 'Unavailable';
+    syncMintUiState();
   }
 }
 
@@ -827,6 +1022,7 @@ async function main() {
   renderFeeSimulator(state);
   renderStakingPreview(state);
   setupToolTabs();
+  setupMintUi(state);
   setupStakingUi(state);
 
   await renderClaimStatus(null, state);
