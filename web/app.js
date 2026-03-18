@@ -25,6 +25,8 @@ const BASE_MIN_FEE = Number(window.ZENFORGE_BASE_MIN_FEE || 0.005);
 const BASE_MAX_FEE = Number(window.ZENFORGE_BASE_MAX_FEE || 0.05);
 const WALLET_DOWNLOAD_URL =
   'https://chromewebstore.google.com/detail/iota-wallet/iidjkmdceolghepehaaddojmnjnkkija';
+const WALLET_AUTO_KEY = 'xenforgeWalletAutoconnect';
+const WALLET_PREF_KEY = 'xenforgeWalletPreferredName';
 const APP_STATE = {
   protocol: null,
   walletSession: null,
@@ -915,6 +917,7 @@ function syncMintUiState() {
 
   if (!session) {
     mintBtn.disabled = true;
+    mintBtn.textContent = 'Start mint (claim rank)';
     claimBtn.disabled = true;
     claimBtn.textContent = 'Claim all mint rewards';
     statusEl.textContent = '';
@@ -923,6 +926,7 @@ function syncMintUiState() {
 
   // Contract guard: one active mint at a time for this protocol object.
   mintBtn.disabled = receipts.length > 0;
+  mintBtn.textContent = receipts.length > 0 ? 'Mint locked (active receipt)' : 'Start mint (claim rank)';
   claimBtn.disabled = claimable.length === 0;
   claimBtn.textContent = claimable.length > 1 ? `Claim all mint rewards (${claimable.length})` : 'Claim all mint rewards';
   statusEl.textContent = '';
@@ -1126,28 +1130,32 @@ async function renderClaimStatus(address, state) {
     const claimable = receipts.filter((r) => r.matured);
 
     if (pending.length) {
+      const previewN = 2;
       const lines = pending
-        .slice(0, 3)
+        .slice(0, previewN)
         .map((r) => {
           const remainingDays = Math.max(0, Math.ceil((r.maturityMs - Date.now()) / DAY_MS));
           return `cRank ${fmt(r.cRank)} · term ${fmt(r.termDays)}d · matures in ${fmt(remainingDays)}d`;
         })
         .join('<br/>');
-      pendingEl.innerHTML = `<div class="claim-warn"><b>${fmt(pending.length)} pending</b></div>${lines}`;
+      const more = pending.length > previewN ? `<br/><span class="claim-more">+${fmt(pending.length - previewN)} more</span>` : '';
+      pendingEl.innerHTML = `<div class="claim-warn"><b>${fmt(pending.length)} pending</b></div>${lines}${more}`;
     } else {
       pendingEl.textContent = 'None';
     }
 
     if (claimable.length) {
+      const previewN = 2;
       const lines = claimable
-        .slice(0, 3)
+        .slice(0, previewN)
         .map((r) => {
           const daysLate = Math.max(0, Math.floor((Date.now() - r.maturityMs) / DAY_MS));
           const penalty = latePenaltyPct(daysLate);
           return `cRank ${fmt(r.cRank)} · term ${fmt(r.termDays)}d · late ${fmt(daysLate)}d · penalty ${penalty}%`;
         })
         .join('<br/>');
-      claimableEl.innerHTML = `<div class="claim-ok"><b>${fmt(claimable.length)} claimable</b></div>${lines}`;
+      const more = claimable.length > previewN ? `<br/><span class="claim-more">+${fmt(claimable.length - previewN)} more</span>` : '';
+      claimableEl.innerHTML = `<div class="claim-ok"><b>${fmt(claimable.length)} claimable</b></div>${lines}${more}`;
     } else {
       claimableEl.textContent = 'None yet';
     }
@@ -1188,6 +1196,23 @@ async function setupWalletConnection(onSessionChange) {
     if (a.length < 12) return a;
     return `${a.slice(0, 6)}...${a.slice(-4)}`;
   };
+  const safeGet = (k) => {
+    try {
+      return localStorage.getItem(k);
+    } catch {
+      return null;
+    }
+  };
+  const safeSet = (k, v) => {
+    try {
+      localStorage.setItem(k, v);
+    } catch {}
+  };
+  const safeDel = (k) => {
+    try {
+      localStorage.removeItem(k);
+    } catch {}
+  };
 
   let currentWallet = null;
   let wallets = [];
@@ -1202,6 +1227,21 @@ async function setupWalletConnection(onSessionChange) {
 
   const api = getWallets();
 
+  const activateSession = (target, acc, { restored = false } = {}) => {
+    currentWallet = target;
+    connectBtn.textContent = shortAddress(acc.address);
+    disconnectBtn.disabled = false;
+    setStatus(restored ? `Reconnected: ${target.name}` : `Connected: ${target.name}`);
+
+    const session = {
+      wallet: target,
+      account: acc,
+      address: acc.address,
+      chain: (Array.from(acc.chains || []).find((c) => String(c).startsWith('iota:')) || CHAIN_ID),
+    };
+    emitSession(session);
+  };
+
   const refresh = () => {
     wallets = (api.get() || []).filter((w) => Array.from(w.chains || []).some((c) => String(c).startsWith('iota:')));
 
@@ -1212,6 +1252,17 @@ async function setupWalletConnection(onSessionChange) {
       setStatus('No compatible IOTA wallet found. Click "Get IOTA Wallet" to install the extension.');
       emitSession(null);
       return;
+    }
+
+    // Auto-restore on refresh when wallet exposes already-authorized accounts.
+    if (!currentWallet && safeGet(WALLET_AUTO_KEY) === '1') {
+      const preferredName = safeGet(WALLET_PREF_KEY);
+      const target = wallets.find((w) => w.name === preferredName) || wallets[0];
+      const acc = target?.accounts?.[0];
+      if (target && acc) {
+        activateSession(target, acc, { restored: true });
+        return;
+      }
     }
 
     connectBtn.disabled = false;
@@ -1238,18 +1289,10 @@ async function setupWalletConnection(onSessionChange) {
       const res = await connectFeature.connect();
       const acc = res?.accounts?.[0] || target.accounts?.[0];
       if (!acc) throw new Error('No account returned');
-      currentWallet = target;
-      connectBtn.textContent = shortAddress(acc.address);
-      disconnectBtn.disabled = false;
-      setStatus(`Connected: ${target.name}`);
 
-      const session = {
-        wallet: target,
-        account: acc,
-        address: acc.address,
-        chain: (Array.from(acc.chains || []).find((c) => String(c).startsWith('iota:')) || CHAIN_ID),
-      };
-      emitSession(session);
+      safeSet(WALLET_AUTO_KEY, '1');
+      safeSet(WALLET_PREF_KEY, target.name || '');
+      activateSession(target, acc);
     } catch (e) {
       setStatus(`Connect failed: ${e?.message || e}`);
     }
@@ -1264,6 +1307,8 @@ async function setupWalletConnection(onSessionChange) {
       connectBtn.textContent = 'Connect';
       disconnectBtn.disabled = true;
       emitSession(null);
+      safeDel(WALLET_AUTO_KEY);
+      safeDel(WALLET_PREF_KEY);
       refresh();
       if (!wallets.length) setStatus('Disconnected.');
     }

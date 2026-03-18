@@ -844,6 +844,13 @@ details p {
   color: var(--muted);
   font-size: 14px;
   line-height: 1.6;
+  max-height: 112px;
+  overflow: auto;
+}
+
+.claim-more {
+  color: #9fb4df;
+  font-size: 13px;
 }
 
 .claim-action-row {
