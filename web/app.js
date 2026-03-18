@@ -761,21 +761,22 @@ function syncMintUiState() {
     return;
   }
 
-  mintBtn.disabled = false;
-
   if (!receipt) {
+    mintBtn.disabled = false;
     claimBtn.disabled = true;
     statusEl.textContent = 'No active mint receipt. Start a mint to create one.';
     return;
   }
 
+  // Active mint exists -> prevent starting another mint until current receipt is claimed.
+  mintBtn.disabled = true;
   claimBtn.disabled = !receipt.matured;
 
   if (!receipt.matured) {
     const daysLeft = Math.max(0, Math.ceil((receipt.maturityMs - Date.now()) / DAY_MS));
-    statusEl.textContent = `Active mint receipt detected. Claim unlocks in ~${fmt(daysLeft)} day(s).`;
+    statusEl.textContent = `Active mint receipt already exists. Start mint is locked. Claim unlocks in ~${fmt(daysLeft)} day(s).`;
   } else {
-    statusEl.textContent = 'Matured mint receipt ready. You can claim mint reward now.';
+    statusEl.textContent = 'Matured mint receipt ready. Claim mint reward to unlock the next mint.';
   }
 }
 
@@ -790,6 +791,21 @@ async function executeClaimRankTx(state) {
     return;
   }
   if (!termInput) return;
+
+  // Guard against duplicate active mints (on-chain abort code 0 / EActiveMintExists).
+  let existing = null;
+  try {
+    existing = await loadActiveMintReceipt(session.address, state);
+    APP_STATE.activeMintReceipt = existing;
+  } catch (err) {
+    if (statusEl) statusEl.textContent = `Mint precheck failed: ${err?.message || err}`;
+    return;
+  }
+  if (existing) {
+    syncMintUiState();
+    if (statusEl) statusEl.textContent = 'Active mint receipt already exists. Claim current receipt before starting a new mint.';
+    return;
+  }
 
   let termDays = Math.floor(Number(termInput.value || 0));
   termDays = Math.max(1, Math.min(100, termDays));
