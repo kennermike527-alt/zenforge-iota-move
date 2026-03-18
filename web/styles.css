@@ -841,6 +841,16 @@ details p {
   line-height: 1.6;
 }
 
+.claim-action-row {
+  margin-top: 10px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.claim-action-row .btn {
+  min-width: 180px;
+}
+
 .claim-ok {
   color: var(--mint);
 }
@@ -992,5 +1002,9 @@ details p {
 
   .claims-grid {
     grid-template-columns: 1fr;
+  }
+
+  .claim-action-row {
+    justify-content: flex-start;
   }
 }
