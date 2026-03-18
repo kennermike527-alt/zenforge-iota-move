@@ -24,7 +24,7 @@ const U64_MAX = 18_446_744_073_709_551_615n;
 const BASE_MIN_FEE = Number(window.ZENFORGE_BASE_MIN_FEE || 0.005);
 const BASE_MAX_FEE = Number(window.ZENFORGE_BASE_MAX_FEE || 0.05);
 const WALLET_DOWNLOAD_URL =
-  window.ZENFORGE_WALLET_DOWNLOAD_URL || 'https://chromewebstore.google.com/search/iota%20wallet';
+  'https://chromewebstore.google.com/detail/iota-wallet/iidjkmdceolghepehaaddojmnjnkkija';
 const APP_STATE = {
   protocol: null,
   walletSession: null,
