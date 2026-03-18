@@ -128,14 +128,13 @@
 
       <section class="card" id="simulatorCard">
         <h2>Fee policy simulator</h2>
-        <p class="subtle">Planning-only math sandbox. This fee model is not enforced on-chain.</p>
+        <p class="subtle">Planning-only math sandbox. Fee is hard-locked by cRank + selected term (no manual fee override).</p>
 
         <div class="inputs sim-grid">
           <label>Global rank<input id="simGlobalRank" type="number" min="1" step="1" value="1" /></label>
+          <label>cRank (claim rank)<input id="simCRank" type="number" min="1" step="1" value="1" /></label>
           <label>Selected term (days, max 100 for now)<input id="simTermDays" type="number" min="1" max="100" step="1" value="30" /></label>
           <label>Current AMP (locked)<input id="simAmp" type="number" min="1" step="1" value="3000" readonly /></label>
-          <label>Min fee (IOTA)<input id="simMinFee" type="number" min="0" step="0.001" value="0.005" /></label>
-          <label>Max fee (IOTA)<input id="simMaxFee" type="number" min="0" step="0.001" value="0.05" /></label>
         </div>
 
         <div id="feeOutput" class="output-box">Loading simulator...</div>
@@ -193,7 +192,7 @@
 
         <details>
           <summary>What fee formula does mint policy use?</summary>
-          <p>Current policy model is linear by term-day: <code>fee(day) = minFee + ((maxFee - minFee) × (365 - day)) / 364</code>. Day 1 maps near max fee; day 365 maps to min fee.</p>
+          <p>Current policy model hard-locks fee by cRank + term:<br/><code>baseFee(day) = baseMin + ((baseMax - baseMin) × (365 - day)) / 364</code><br/><code>multiplier = 0.8 + 0.4 × (cRank / globalRank)</code><br/><code>fee = baseFee × multiplier</code><br/>No manual fee override in the simulator.</p>
         </details>
 
         <details>

@@ -21,6 +21,8 @@ const DAY_MS = 86_400_000;
 const CHAIN_ID = `iota:${CHAIN_CONFIG.networkLabel}`;
 const TOKEN_DECIMALS = Number(window.ZENFORGE_TOKEN_DECIMALS || 18);
 const U64_MAX = 18_446_744_073_709_551_615n;
+const BASE_MIN_FEE = Number(window.ZENFORGE_BASE_MIN_FEE || 0.005);
+const BASE_MAX_FEE = Number(window.ZENFORGE_BASE_MAX_FEE || 0.05);
 const APP_STATE = {
   protocol: null,
   walletSession: null,
@@ -83,8 +85,28 @@ function freeMintTermLimitForRank(globalRank) {
   return 100 + floorLog2(r) * 15;
 }
 
+function clamp(v, min, max) {
+  return Math.min(max, Math.max(min, v));
+}
+
 function feeAtTerm(day, minFee, maxFee, maxTerm = 365) {
   return minFee + ((maxFee - minFee) * (maxTerm - day)) / (maxTerm - 1);
+}
+
+function hardLockedFeeFromCRank(cRank, termDays, globalRank) {
+  const gRank = Math.max(1, Math.floor(Number(globalRank || 1)));
+  const c = clamp(Math.floor(Number(cRank || gRank)), 1, gRank);
+  const d = clamp(Math.floor(Number(termDays || 1)), 1, 365);
+
+  const baseFee = feeAtTerm(d, BASE_MIN_FEE, BASE_MAX_FEE);
+  const multiplier = 0.8 + 0.4 * (c / gRank);
+  return {
+    cRank: c,
+    day: d,
+    baseFee,
+    multiplier,
+    fee: baseFee * multiplier,
+  };
 }
 
 function latePenaltyPct(daysLate) {
@@ -175,74 +197,71 @@ function renderSnapshot(state, sourceLabel) {
 
 function renderFeeSimulator(state) {
   const rankInput = document.querySelector('#simGlobalRank');
+  const cRankInput = document.querySelector('#simCRank');
   const termInput = document.querySelector('#simTermDays');
   const ampInput = document.querySelector('#simAmp');
-  const minInput = document.querySelector('#simMinFee');
-  const maxInput = document.querySelector('#simMaxFee');
 
   const output = document.querySelector('#feeOutput');
   const formulaOutput = document.querySelector('#feeFormulaOutput');
   const feeNote = document.querySelector('#feeNote');
   const simStateNote = document.querySelector('#simStateNote');
 
-  if (!rankInput || !termInput || !ampInput || !minInput || !maxInput || !output || !formulaOutput) return;
+  if (!rankInput || !cRankInput || !termInput || !ampInput || !output || !formulaOutput) return;
 
   // Pre-populate from current protocol state (live or fallback)
   const lockedAmp = Math.max(1, Math.floor(Number(state.amp || 3000)));
-  rankInput.value = String(Math.max(1, Math.floor(Number(state.globalRank || 1))));
+  const startRank = Math.max(1, Math.floor(Number(state.globalRank || 1)));
+  rankInput.value = String(startRank);
+  cRankInput.value = String(startRank);
   termInput.value = String(Math.min(100, Math.max(1, Math.floor(Number(state.maxTerm || 100)))));
   ampInput.value = String(lockedAmp);
   ampInput.readOnly = true;
 
   const update = () => {
     const rank = Math.max(1, Math.floor(Number(rankInput.value || 1)));
+    rankInput.value = String(rank);
+
+    const cRank = clamp(Math.floor(Number(cRankInput.value || rank)), 1, rank);
+    cRankInput.value = String(cRank);
+
     let termDays = Math.max(1, Math.floor(Number(termInput.value || 30)));
     termDays = Math.min(100, termDays);
     termInput.value = String(termDays);
 
     ampInput.value = String(lockedAmp);
 
-    let minFee = Number(minInput.value || 0.005);
-    let maxFee = Number(maxInput.value || 0.05);
-    if (!Number.isFinite(minFee)) minFee = 0.005;
-    if (!Number.isFinite(maxFee)) maxFee = 0.05;
-    if (maxFee < minFee) {
-      const t = maxFee;
-      maxFee = minFee;
-      minFee = t;
-      minInput.value = String(minFee);
-      maxInput.value = String(maxFee);
-    }
-
     const impliedMaxTerm = freeMintTermLimitForRank(rank);
-    const selectedFee = feeAtTerm(termDays, minFee, maxFee);
+    const feeModel = hardLockedFeeFromCRank(cRank, termDays, rank);
 
     output.innerHTML = [
       `<b>Selected term:</b> ${termDays} days`,
-      `<b>Simulated fee charged:</b> ${selectedFee.toFixed(6)} IOTA`,
-      `<b>Fee range:</b> day 1 = ${maxFee.toFixed(6)} IOTA, day 365 = ${minFee.toFixed(6)} IOTA`,
+      `<b>Selected cRank:</b> ${fmt(cRank)}`,
+      `<b>Hard-locked fee charged:</b> ${feeModel.fee.toFixed(6)} IOTA`,
+      `<b>Base term fee:</b> ${feeModel.baseFee.toFixed(6)} IOTA`,
+      `<b>cRank multiplier:</b> ×${feeModel.multiplier.toFixed(4)}`,
       `<b>Current simulator state:</b> rank ${fmt(rank)}, AMP ${fmt(lockedAmp)} (locked)`,
     ].join('<br/>');
 
     formulaOutput.innerHTML = [
-      '<b>Fee formula (policy model):</b>',
-      '<code>fee(day) = minFee + ((maxFee - minFee) × (365 - day)) / 364</code>',
-      `<b>Current inputs:</b> minFee=${minFee.toFixed(6)}, maxFee=${maxFee.toFixed(6)}, day=${termDays}`,
-      `<b>Computed fee:</b> ${selectedFee.toFixed(6)} IOTA`,
+      '<b>Fee formula (hard-locked policy model):</b>',
+      `<code>baseFee(day) = ${BASE_MIN_FEE.toFixed(6)} + ((${BASE_MAX_FEE.toFixed(6)} - ${BASE_MIN_FEE.toFixed(6)}) × (365 - day)) / 364</code>`,
+      '<code>multiplier = 0.8 + 0.4 × (cRank / globalRank)</code>',
+      '<code>fee = baseFee × multiplier</code>',
+      `<b>Current inputs:</b> globalRank=${fmt(rank)}, cRank=${fmt(cRank)}, day=${termDays}`,
+      `<b>Computed fee:</b> ${feeModel.fee.toFixed(6)} IOTA`,
     ].join('<br/>');
 
     if (simStateNote) {
-      simStateNote.textContent = `Formula-implied max term from rank is ${fmt(impliedMaxTerm)} days. AMP is locked to the current protocol value in this simulator.`;
+      simStateNote.textContent = `Formula-implied max term from rank is ${fmt(impliedMaxTerm)} days. cRank is clamped to [1, globalRank]. No manual fee override.`;
     }
 
-    if (feeNote) feeNote.textContent = 'Fee model shown above is currently UI policy simulation, not enforced on-chain yet.';
+    if (feeNote) feeNote.textContent = 'Fee shown here is hard-locked by cRank + selected term in this UI policy model (still not on-chain-enforced yet).';
   };
 
   ['input', 'change'].forEach((evt) => {
     rankInput.addEventListener(evt, update);
+    cRankInput.addEventListener(evt, update);
     termInput.addEventListener(evt, update);
-    minInput.addEventListener(evt, update);
-    maxInput.addEventListener(evt, update);
   });
 
   update();

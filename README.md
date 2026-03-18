@@ -31,8 +31,10 @@ This package is a first-pass port of the XEN v1.7 litepaper mechanics onto IOTA 
 - Staking APY:
   - starts at `20%`, decreases by `1%` every `90 days`, floor `2%`
 - UI mint-fee policy simulator (off-chain, for planning):
-  - `fee(day) = minFee + ((maxFee - minFee) * (365 - day)) / 364`
-  - day `1` maps near `maxFee`; day `365` maps to `minFee`
+  - hard-locked by cRank + selected term (no manual fee override)
+  - `baseFee(day) = baseMin + ((baseMax - baseMin) * (365 - day)) / 364`
+  - `multiplier = 0.8 + 0.4 * (cRank / globalRank)`
+  - `fee = baseFee * multiplier`
 
 ## Notes / deviations
 - Uses integer math (basis points) for deterministic Move execution.
