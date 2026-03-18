@@ -751,6 +751,8 @@ function syncMintUiState() {
   // Show claim action only when there is an actually claimable receipt.
   const showClaimAction = Boolean(session && receipt && receipt.matured);
   claimRow.hidden = !showClaimAction;
+  claimRow.style.display = showClaimAction ? 'flex' : 'none';
+  claimRow.setAttribute('aria-hidden', showClaimAction ? 'false' : 'true');
 
   if (!session) {
     mintBtn.disabled = true;
