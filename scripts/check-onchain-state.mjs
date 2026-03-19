@@ -8,10 +8,10 @@ const cfg = {
   rpcUrl: process.env.ZENFORGE_RPC_URL || 'https://api.testnet.iota.cafe',
   protocolId:
     process.env.ZENFORGE_PROTOCOL_ID ||
-    '0xdbae4eb086afd1448d41306a5ad9c29fa48d802ace9d29dab857b543ee8e0c6f',
+    '0x3fb22d58d2ce2f6c603a64428d37bd164ecad60564a9e823de8c393b5a428678',
   expectedPackage:
     process.env.ZENFORGE_PACKAGE_ID ||
-    '0xa77f492c82c6f886801067a7b4a7c2eafe26b1f165ec2ae77539464d57ff2567',
+    '0x4a146c82ea75b2894da92d52b40d9406bfab7ddc9abf38ff97fd3013190548fd',
   network: process.env.ZENFORGE_NETWORK || 'testnet',
 };
 

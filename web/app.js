@@ -1,13 +1,15 @@
+import { initCursorAnimation } from './cursor-animation.js';
+
 const fmt = (n) => new Intl.NumberFormat().format(Number(n || 0));
 
 const CHAIN_CONFIG = {
   rpcUrl: window.ZENFORGE_RPC_URL || 'https://api.testnet.iota.cafe',
   protocolId:
     window.ZENFORGE_PROTOCOL_ID ||
-    '0x5f89f3838ab94618a38f340350060127cb3a7d359e0f9f77e6f6de64595812cd',
+    '0x3fb22d58d2ce2f6c603a64428d37bd164ecad60564a9e823de8c393b5a428678',
   packageId:
     window.ZENFORGE_PACKAGE_ID ||
-    '0xf7ef66f02383e41f4b2ba253a5dfe8033527c4894dbf9f81f5e6f5f0f4724d27',
+    '0x4a146c82ea75b2894da92d52b40d9406bfab7ddc9abf38ff97fd3013190548fd',
   clockId: window.ZENFORGE_CLOCK_ID || '0x6',
   networkLabel: window.ZENFORGE_NETWORK || 'testnet',
 };
@@ -23,10 +25,14 @@ const TOKEN_DECIMALS = Number(window.ZENFORGE_TOKEN_DECIMALS || 18);
 const U64_MAX = 18_446_744_073_709_551_615n;
 const BASE_MIN_FEE = Number(window.ZENFORGE_BASE_MIN_FEE || 0.005);
 const BASE_MAX_FEE = Number(window.ZENFORGE_BASE_MAX_FEE || 0.05);
+const IOTA_MIST = 1_000_000_000n;
+const CLAIM_FEE_MIN_MIST = BigInt(Math.round(BASE_MIN_FEE * 1_000_000_000));
+const CLAIM_FEE_MAX_MIST = BigInt(Math.round(BASE_MAX_FEE * 1_000_000_000));
 const WALLET_DOWNLOAD_URL =
   'https://chromewebstore.google.com/detail/iota-wallet/iidjkmdceolghepehaaddojmnjnkkija';
 const WALLET_AUTO_KEY = 'xenforgeWalletAutoconnect';
 const WALLET_PREF_KEY = 'xenforgeWalletPreferredName';
+const WALLET_ADDR_KEY = 'xenforgeWalletAddress';
 const APP_STATE = {
   protocol: null,
   walletSession: null,
@@ -34,7 +40,189 @@ const APP_STATE = {
   activeMintReceipts: [],
   stakeCoins: [],
   stakeReceipts: [],
+  claimCountdownTimer: null,
+  claimCountdownRefreshPending: false,
+  pendingViewLimit: 25,
+  protocolPollTimer: null,
 };
+
+function txErrorMessage(err) {
+  const raw = String(err?.message || err || 'Unknown error').trim();
+  return raw.split('\n')[0].slice(0, 360);
+}
+
+function showTxPopup(kind, title, message, digest = '') {
+  if (typeof document === 'undefined') return;
+
+  let root = document.querySelector('#txToastRoot');
+  if (!root) {
+    root = document.createElement('div');
+    root.id = 'txToastRoot';
+    root.className = 'tx-toast-root';
+    document.body.appendChild(root);
+  }
+
+  const toast = document.createElement('div');
+  toast.className = `tx-toast ${kind || 'info'}`;
+  toast.setAttribute('role', 'status');
+  toast.setAttribute('aria-live', 'polite');
+
+  const titleEl = document.createElement('div');
+  titleEl.className = 'tx-toast-title';
+  titleEl.textContent = title;
+  toast.appendChild(titleEl);
+
+  if (message) {
+    const msgEl = document.createElement('div');
+    msgEl.className = 'tx-toast-message';
+    msgEl.textContent = message;
+    toast.appendChild(msgEl);
+  }
+
+  if (digest) {
+    const digestEl = document.createElement('div');
+    digestEl.className = 'tx-toast-digest';
+    digestEl.textContent = `Digest: ${digest}`;
+    toast.appendChild(digestEl);
+  }
+
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'tx-toast-close';
+  closeBtn.textContent = '×';
+
+  const remove = () => {
+    if (toast.parentElement) toast.parentElement.removeChild(toast);
+  };
+
+  closeBtn.addEventListener('click', remove);
+  toast.appendChild(closeBtn);
+
+  root.prepend(toast);
+
+  while (root.children.length > 4) {
+    root.removeChild(root.lastElementChild);
+  }
+
+  window.setTimeout(remove, 8000);
+}
+
+function ensureNetworkForTx(session, statusEl) {
+  const accountChains = Array.from(session?.account?.chains || []);
+  if (accountChains.length && !accountChains.includes(CHAIN_ID)) {
+    const msg = `Wallet/account network mismatch. Switch to ${CHAIN_CONFIG.networkLabel} (${CHAIN_ID}) and retry.`;
+    if (statusEl) statusEl.textContent = msg;
+    showTxPopup('error', 'Wrong network', msg);
+    return false;
+  }
+  return true;
+}
+
+async function enforceCurrentPackageStakeCoins(coinIds, state) {
+  const packageId = state?.packageId || CHAIN_CONFIG.packageId;
+  const expectedType = `${packageId}::xen::XEN`;
+  const ids = Array.from(new Set((coinIds || []).filter(Boolean)));
+
+  const invalid = [];
+  for (const id of ids) {
+    try {
+      const obj = await rpcCall('iota_getObject', [id, { showType: true }]);
+      const t = structType(obj);
+      if (t !== expectedType) invalid.push({ id, type: t || 'unknown' });
+    } catch {
+      invalid.push({ id, type: 'unreadable' });
+    }
+  }
+
+  return {
+    ok: invalid.length === 0,
+    invalid,
+    expectedType,
+  };
+}
+
+function delayMs(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function refreshClaimStatusWithRetry(address, state, { expectedMinCount = 0, retries = 12, delay = 1500, statusEl } = {}) {
+  for (let i = 0; i < retries; i += 1) {
+    await renderClaimStatus(address, state);
+    const seen = (APP_STATE.activeMintReceipts || []).length;
+    if (seen >= expectedMinCount) return true;
+
+    if (statusEl) {
+      statusEl.textContent = `Mint confirmed. Syncing receipts (${i + 1}/${retries})...`;
+    }
+    await delayMs(delay);
+  }
+
+  return false;
+}
+
+function formatClockHms(totalSeconds) {
+  const safe = Math.max(0, Math.floor(Number(totalSeconds || 0)));
+  const h = Math.floor(safe / 3600);
+  const m = Math.floor((safe % 3600) / 60);
+  const s = safe % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+function stopClaimCountdownTicker() {
+  if (APP_STATE.claimCountdownTimer) {
+    window.clearInterval(APP_STATE.claimCountdownTimer);
+    APP_STATE.claimCountdownTimer = null;
+  }
+}
+
+function updateClaimCountdowns() {
+  const nodes = Array.from(document.querySelectorAll('[data-live-countdown="1"]'));
+  if (!nodes.length) {
+    stopClaimCountdownTicker();
+    return;
+  }
+
+  const now = Date.now();
+  let crossedMaturity = false;
+
+  for (const node of nodes) {
+    const maturityMs = Number(node.getAttribute('data-maturity-ms') || '0');
+    const remainingMs = maturityMs - now;
+
+    if (remainingMs <= 0) {
+      node.textContent = '00:00:00';
+      crossedMaturity = true;
+      continue;
+    }
+
+    node.textContent = formatClockHms(remainingMs / 1000);
+  }
+
+  if (crossedMaturity && !APP_STATE.claimCountdownRefreshPending) {
+    const address = APP_STATE.walletSession?.address;
+    const state = APP_STATE.protocol;
+    if (address && state) {
+      APP_STATE.claimCountdownRefreshPending = true;
+      window.setTimeout(async () => {
+        try {
+          await renderClaimStatus(address, state);
+        } finally {
+          APP_STATE.claimCountdownRefreshPending = false;
+        }
+      }, 900);
+    }
+  }
+}
+
+function ensureClaimCountdownTicker() {
+  updateClaimCountdowns();
+
+  const hasCountdownNodes = Boolean(document.querySelector('[data-live-countdown="1"]'));
+  if (!hasCountdownNodes) return;
+
+  if (APP_STATE.claimCountdownTimer) return;
+  APP_STATE.claimCountdownTimer = window.setInterval(updateClaimCountdowns, 1000);
+}
 
 function fmtDec(n, max = 6) {
   return Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: max });
@@ -100,19 +288,21 @@ function feeAtTerm(day, minFee, maxFee, maxTerm = 365) {
   return minFee + ((maxFee - minFee) * (maxTerm - day)) / (maxTerm - 1);
 }
 
-function hardLockedFeeFromCRank(cRank, termDays, globalRank) {
-  const gRank = Math.max(1, Math.floor(Number(globalRank || 1)));
-  const c = clamp(Math.floor(Number(cRank || gRank)), 1, gRank);
-  const d = clamp(Math.floor(Number(termDays || 1)), 1, 365);
+function claimRankFeeMist(termDays) {
+  const d = BigInt(clamp(Math.floor(Number(termDays || 1)), 1, 365));
+  return CLAIM_FEE_MIN_MIST + ((CLAIM_FEE_MAX_MIST - CLAIM_FEE_MIN_MIST) * (365n - d)) / 364n;
+}
 
-  const baseFee = feeAtTerm(d, BASE_MIN_FEE, BASE_MAX_FEE);
-  const multiplier = 0.8 + 0.4 * (c / gRank);
+function claimRankFeeIota(termDays) {
+  return Number(claimRankFeeMist(termDays)) / 1_000_000_000;
+}
+
+function hardLockedFeeForTerm(termDays) {
+  const day = clamp(Math.floor(Number(termDays || 1)), 1, 365);
+  const fee = claimRankFeeIota(day);
   return {
-    cRank: c,
-    day: d,
-    baseFee,
-    multiplier,
-    fee: baseFee * multiplier,
+    day,
+    fee,
   };
 }
 
@@ -179,17 +369,10 @@ function renderSnapshot(state, sourceLabel) {
   setText('#metricRank', fmt(state.globalRank));
   setText('#metricMaxTerm', `${fmt(state.maxTerm)} days`);
   setText('#metricAmp', fmt(state.amp));
-  setText('#metricApy', fmt(state.apyBps));
-  setText('#selectableTermHint', `Right now, terms above ${fmt(state.maxTerm)} days are not selectable on-chain.`);
+  setText('#metricApy', `${(Number(state.apyBps || 0) / 100).toFixed(2)}%`);
+  setText('#selectableTermHint', `Max mint term right now: ${fmt(state.maxTerm)} days (protocol-controlled; increases as global rank grows).`);
 
   const isLive = !sourceLabel.includes('FALLBACK');
-
-  const badge = document.querySelector('#sourceBadge');
-  if (badge) {
-    badge.textContent = sourceLabel;
-    badge.classList.remove('live', 'fallback');
-    badge.classList.add(isLive ? 'live' : 'fallback');
-  }
 
   const fetchBar = document.querySelector('#liveFetchBar');
   const fetchText = document.querySelector('#liveFetchText');
@@ -197,14 +380,30 @@ function renderSnapshot(state, sourceLabel) {
     fetchBar.classList.remove('checking', 'live', 'fallback');
     fetchBar.classList.add(isLive ? 'live' : 'fallback');
     fetchText.textContent = isLive
-      ? 'Metrics currently fetched on-chain'
-      : 'On-chain fetch unavailable — showing fallback data';
+      ? 'Metrics fetched live'
+      : 'Live fetch unavailable — showing fallback data';
+  }
+}
+
+async function refreshProtocolState(state, { markFallbackOnError = false } = {}) {
+  try {
+    const live = await fetchOnchainState();
+    Object.assign(state, live);
+    APP_STATE.protocol = state;
+    renderSnapshot(state, 'ON-CHAIN');
+    renderFeeSimulator(state);
+    setText('#stamp', `Updated: ${new Date().toLocaleString()}`);
+    return true;
+  } catch (err) {
+    if (markFallbackOnError) {
+      renderSnapshot(state, 'SIMULATION FALLBACK');
+    }
+    return false;
   }
 }
 
 function renderFeeSimulator(state) {
   const rankInput = document.querySelector('#simGlobalRank');
-  const cRankInput = document.querySelector('#simCRank');
   const termInput = document.querySelector('#simTermDays');
   const ampInput = document.querySelector('#simAmp');
 
@@ -213,23 +412,24 @@ function renderFeeSimulator(state) {
   const feeNote = document.querySelector('#feeNote');
   const simStateNote = document.querySelector('#simStateNote');
 
-  if (!rankInput || !cRankInput || !termInput || !ampInput || !output || !formulaOutput) return;
+  if (!rankInput || !termInput || !ampInput || !output || !formulaOutput) return;
 
-  // Pre-populate from current protocol state (live or fallback)
   const lockedAmp = Math.max(1, Math.floor(Number(state.amp || 3000)));
   const startRank = Math.max(1, Math.floor(Number(state.globalRank || 1)));
+
   rankInput.value = String(startRank);
-  cRankInput.value = String(startRank);
-  termInput.value = String(Math.min(100, Math.max(1, Math.floor(Number(state.maxTerm || 100)))));
+  rankInput.readOnly = true;
+
   ampInput.value = String(lockedAmp);
   ampInput.readOnly = true;
 
-  const update = () => {
-    const rank = Math.max(1, Math.floor(Number(rankInput.value || 1)));
-    rankInput.value = String(rank);
+  const termFromInput = Math.floor(Number(termInput.value || 0));
+  const defaultTerm = Math.min(100, Math.max(1, Math.floor(Number(state.maxTerm || 100))));
+  termInput.value = String(termFromInput >= 1 ? Math.min(100, termFromInput) : defaultTerm);
 
-    const cRank = clamp(Math.floor(Number(cRankInput.value || rank)), 1, rank);
-    cRankInput.value = String(cRank);
+  const update = () => {
+    const rank = startRank;
+    rankInput.value = String(rank);
 
     let termDays = Math.max(1, Math.floor(Number(termInput.value || 30)));
     termDays = Math.min(100, termDays);
@@ -238,54 +438,51 @@ function renderFeeSimulator(state) {
     ampInput.value = String(lockedAmp);
 
     const impliedMaxTerm = freeMintTermLimitForRank(rank);
-    const feeModel = hardLockedFeeFromCRank(cRank, termDays, rank);
+    const feeModel = hardLockedFeeForTerm(termDays);
 
     output.innerHTML = [
       `<b>Selected term:</b> ${termDays} days`,
-      `<b>Selected cRank:</b> ${fmt(cRank)}`,
       `<b>Hard-locked fee charged:</b> ${feeModel.fee.toFixed(6)} IOTA`,
-      `<b>Base term fee:</b> ${feeModel.baseFee.toFixed(6)} IOTA`,
-      `<b>cRank multiplier:</b> ×${feeModel.multiplier.toFixed(4)}`,
-      `<b>Current simulator state:</b> rank ${fmt(rank)}, AMP ${fmt(lockedAmp)} (locked)`,
+      `<b>Current simulator state:</b> rank ${fmt(rank)} (live), AMP ${fmt(lockedAmp)} (locked)`,
     ].join('<br/>');
 
     formulaOutput.innerHTML = [
       '<b>Fee formula (hard-locked policy model):</b>',
-      `<code>baseFee(day) = ${BASE_MIN_FEE.toFixed(6)} + ((${BASE_MAX_FEE.toFixed(6)} - ${BASE_MIN_FEE.toFixed(6)}) × (365 - day)) / 364</code>`,
-      '<code>multiplier = 0.8 + 0.4 × (cRank / globalRank)</code>',
-      '<code>fee = baseFee × multiplier</code>',
-      `<b>Current inputs:</b> globalRank=${fmt(rank)}, cRank=${fmt(cRank)}, day=${termDays}`,
+      `<code>baseFee(day) = ${BASE_MIN_FEE.toFixed(6)} + ((${BASE_MAX_FEE.toFixed(6)} - ${BASE_MIN_FEE.toFixed(6)}) * (365 - day)) / 364</code>`,
+      '<code>fee = baseFee(day)</code>',
+      `<b>Current inputs:</b> globalRank=${fmt(rank)}, day=${termDays}`,
       `<b>Computed fee:</b> ${feeModel.fee.toFixed(6)} IOTA`,
     ].join('<br/>');
 
     if (simStateNote) {
-      simStateNote.textContent = `Formula-implied max term from rank is ${fmt(impliedMaxTerm)} days. cRank is clamped to [1, globalRank]. No manual fee override.`;
+      simStateNote.textContent = `Formula-implied max term from rank is ${fmt(impliedMaxTerm)} days. Global rank is live/read-only.`;
     }
 
-    if (feeNote) feeNote.textContent = 'Fee shown here is hard-locked by cRank + selected term in this UI policy model (still not on-chain-enforced yet).';
+    if (feeNote) feeNote.textContent = 'Fee shown here is hard-locked by selected term and enforced on-chain in claim_rank.';
   };
 
-  ['input', 'change'].forEach((evt) => {
-    rankInput.addEventListener(evt, update);
-    cRankInput.addEventListener(evt, update);
-    termInput.addEventListener(evt, update);
-  });
+  rankInput.oninput = update;
+  rankInput.onchange = update;
+  termInput.oninput = update;
+  termInput.onchange = update;
 
   update();
 }
 
 function renderStakingPreview(state) {
-  const apyInput = document.querySelector('#stakeApyBps');
+  const apyBpsEl = document.querySelector('#stakeApyBps');
+  const apyPctEl = document.querySelector('#stakeApyPct');
   const amountInput = document.querySelector('#stakeAmount');
   const termInput = document.querySelector('#stakeTermDays');
   const output = document.querySelector('#stakingOutput');
   const note = document.querySelector('#stakingNote');
 
-  if (!apyInput || !amountInput || !termInput || !output) return;
+  if (!apyBpsEl || !amountInput || !termInput || !output) return;
 
   const apyBps = Math.max(0, Math.floor(Number(state.apyBps || 0)));
-  apyInput.value = String(apyBps);
-  apyInput.readOnly = true;
+  const rate = apyBps / 10_000;
+  apyBpsEl.textContent = `${(rate * 100).toFixed(2)}% APY`;
+  if (apyPctEl) apyPctEl.textContent = 'Fixed at stake start';
 
   const update = () => {
     const principal = Math.max(0, Number(String(amountInput.value || '0').replace(/,/g, '.')) || 0);
@@ -298,16 +495,16 @@ function renderStakingPreview(state) {
     const rawApprox = parseUnits(String(principal), TOKEN_DECIMALS);
 
     output.innerHTML = [
-      `<b>Staked principal:</b> ${fmtDec(principal)} XENI`,
-      `<b>APY context:</b> ${fmt(apyBps)} bps (${(rate * 100).toFixed(2)}% yearly)`,
+      `<b>Staked principal:</b> ${fmtDec(principal)} XEN`,
+      `<b>APY:</b> ${(rate * 100).toFixed(2)}%`,
       `<b>Term:</b> ${fmt(termDays)} days`,
-      `<b>Estimated reward:</b> ${fmtDec(reward)} XENI`,
-      `<b>Estimated total at maturity:</b> ${fmtDec(total)} XENI`,
+      `<b>Estimated reward:</b> ${fmtDec(reward)} XEN`,
+      `<b>Estimated total at maturity:</b> ${fmtDec(total)} XEN`,
       `<b>Raw amount used on-chain:</b> ${rawApprox ? fmt(rawApprox.toString()) : '-'}`,
     ].join('<br/>');
 
     if (note) {
-      note.textContent = 'Preview uses a simple linear estimate for readability. Stake input is in human XENI, converted to 18-decimal raw units for transaction build.';
+      note.textContent = 'Preview uses a simple linear estimate for readability. Stake input is in human XEN, converted to 18-decimal raw units for transaction build.';
     }
   };
 
@@ -354,66 +551,7 @@ function setupToolTabs() {
 }
 
 function setupCursorFx() {
-  const finePointer = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
-  if (!finePointer) return;
-
-  const dot = document.querySelector('#cursorDot');
-  const glow = document.querySelector('#cursorGlow');
-  const toggle = document.querySelector('#cursorToggle');
-  if (!dot || !glow || !toggle) return;
-
-  let enabled = localStorage.getItem('xenforgeCursorFx') !== 'off';
-  let x = window.innerWidth / 2;
-  let y = window.innerHeight / 2;
-  let gx = x;
-  let gy = y;
-
-  const apply = () => {
-    document.body.classList.toggle('cursor-fx-enabled', enabled);
-    toggle.textContent = `Cursor FX: ${enabled ? 'On' : 'Off'}`;
-  };
-
-  const move = (e) => {
-    x = e.clientX;
-    y = e.clientY;
-    if (enabled) {
-      dot.style.left = `${x}px`;
-      dot.style.top = `${y}px`;
-    }
-  };
-
-  const tick = () => {
-    if (enabled) {
-      gx += (x - gx) * 0.2;
-      gy += (y - gy) * 0.2;
-      glow.style.left = `${gx}px`;
-      glow.style.top = `${gy}px`;
-    }
-    requestAnimationFrame(tick);
-  };
-
-  const interactiveSel = 'a, button, input, select, textarea, summary, [role="button"]';
-  const wireInteractive = () => {
-    document.querySelectorAll(interactiveSel).forEach((el) => {
-      if (el.dataset.cursorFxBound) return;
-      el.dataset.cursorFxBound = '1';
-      el.addEventListener('mouseenter', () => glow.classList.add('active'));
-      el.addEventListener('mouseleave', () => glow.classList.remove('active'));
-      el.addEventListener('focus', () => glow.classList.add('active'));
-      el.addEventListener('blur', () => glow.classList.remove('active'));
-    });
-  };
-
-  toggle.addEventListener('click', () => {
-    enabled = !enabled;
-    localStorage.setItem('xenforgeCursorFx', enabled ? 'on' : 'off');
-    apply();
-  });
-
-  window.addEventListener('mousemove', move, { passive: true });
-  wireInteractive();
-  apply();
-  tick();
+  initCursorAnimation({ toggleSelector: '#cursorToggle' });
 }
 
 async function fetchOwnedObjects(address, maxPages = 4) {
@@ -501,11 +639,11 @@ async function renderStakeList(address, state) {
         return `
           <div class="stake-item">
             <b>Status:</b> ${status}<br/>
-            <b>Principal:</b> ${fmtDec(s.principal)} XENI<br/>
+            <b>Principal:</b> ${fmtDec(s.principal)} XEN<br/>
             <b>Principal (raw):</b> ${fmt(s.principalRaw.toString())}<br/>
             <b>Term:</b> ${fmt(s.termDays)} days<br/>
-            <b>APY:</b> ${fmt(s.apyBps)} bps<br/>
-            <b>Estimated reward:</b> ${fmtDec(s.estReward)} XENI<br/>
+            <b>APY:</b> ${(Number(s.apyBps || 0) / 100).toFixed(2)}%<br/>
+            <b>Estimated reward:</b> ${fmtDec(s.estReward)} XEN<br/>
             <b>Maturity:</b> ${maturityText}<br/>
             <b>Receipt:</b> <code>${s.id}</code>${s.packageMatch ? '' : ' <span class="claim-warn">(different package)</span>'}
             <div class="stake-item-actions">${action}</div>
@@ -537,7 +675,7 @@ async function renderStakeCoinOptions(address, state) {
     return;
   }
 
-  selectEl.innerHTML = '<option value="">Loading XENI coins...</option>';
+  selectEl.innerHTML = '<option value="">Loading XEN coins...</option>';
 
   try {
     const packageId = state.packageId || CHAIN_CONFIG.packageId;
@@ -551,7 +689,7 @@ async function renderStakeCoinOptions(address, state) {
     }));
 
     if (!data.length) {
-      selectEl.innerHTML = '<option value="">No XENI coin objects found</option>';
+      selectEl.innerHTML = '<option value="">No XEN coin objects found</option>';
       if (stakeBtn) stakeBtn.disabled = true;
       if (stakeAllBtn) stakeAllBtn.disabled = true;
       return;
@@ -563,7 +701,7 @@ async function renderStakeCoinOptions(address, state) {
         const balRaw = String(c.balance || '0');
         const balHuman = formatUnits(balRaw, TOKEN_DECIMALS, 6);
         const short = `${id.slice(0, 8)}...${id.slice(-6)}`;
-        return `<option value="${id}" ${i === 0 ? 'selected' : ''}>${short} · balance: ${balHuman} XENI</option>`;
+        return `<option value="${id}" ${i === 0 ? 'selected' : ''}>${short} · balance: ${balHuman} XEN</option>`;
       })
       .join('');
 
@@ -590,6 +728,7 @@ async function executeStakeTx(state, opts = {}) {
     if (statusEl) statusEl.textContent = 'Connect wallet first.';
     return;
   }
+  if (!ensureNetworkForTx(session, statusEl)) return;
   if (!amountInput || !termInput || !coinSelect) return;
 
   const stakeAll = Boolean(opts?.stakeAll);
@@ -603,20 +742,22 @@ async function executeStakeTx(state, opts = {}) {
   let coinId = '';
   let amountRaw = 0n;
   let amountHumanText = '';
+  let guardCoinIds = [];
 
   if (stakeAll) {
     const coins = (APP_STATE.stakeCoins || []).filter((c) => c.id && c.balanceRaw > 0n);
     if (!coins.length) {
-      if (statusEl) statusEl.textContent = 'No stakeable XENI coin objects found.';
+      if (statusEl) statusEl.textContent = 'No stakeable XEN coin objects found.';
       return;
     }
 
     coinId = coins[0].id;
+    guardCoinIds = coins.map((c) => c.id);
     amountRaw = coins.reduce((acc, c) => acc + c.balanceRaw, 0n);
     amountHumanText = formatUnits(amountRaw, TOKEN_DECIMALS, 6);
 
     if (amountRaw <= 0n) {
-      if (statusEl) statusEl.textContent = 'No stakeable XENI balance found.';
+      if (statusEl) statusEl.textContent = 'No stakeable XEN balance found.';
       return;
     }
   } else {
@@ -625,11 +766,11 @@ async function executeStakeTx(state, opts = {}) {
     coinId = String(coinSelect.value || '').trim();
 
     if (!coinId) {
-      if (statusEl) statusEl.textContent = 'Select a XENI coin object.';
+      if (statusEl) statusEl.textContent = 'Select a XEN coin object.';
       return;
     }
     if (!parsed || parsed <= 0n) {
-      if (statusEl) statusEl.textContent = 'Enter a valid stake amount in XENI (e.g., 1.25).';
+      if (statusEl) statusEl.textContent = 'Enter a valid stake amount in XEN (e.g., 1.25).';
       return;
     }
 
@@ -641,6 +782,7 @@ async function executeStakeTx(state, opts = {}) {
 
     amountRaw = parsed;
     amountHumanText = amountText;
+    guardCoinIds = [coinId];
   }
 
   if (amountRaw > U64_MAX) {
@@ -648,12 +790,21 @@ async function executeStakeTx(state, opts = {}) {
     return;
   }
 
+  const guard = await enforceCurrentPackageStakeCoins(guardCoinIds, state);
+  if (!guard.ok) {
+    const bad = guard.invalid[0];
+    const msg = `Blocked: only current-package XEN can be staked. Rejected coin ${bad?.id || ''} (${bad?.type || 'unknown type'}).`;
+    if (statusEl) statusEl.textContent = msg;
+    showTxPopup('error', 'Stake blocked', msg);
+    return;
+  }
+
   try {
     if (stakeBtn) stakeBtn.disabled = true;
     if (stakeAllBtn) stakeAllBtn.disabled = true;
     if (statusEl) statusEl.textContent = stakeAll
-      ? `Preparing stake-all transaction for ${amountHumanText} XENI...`
-      : `Preparing stake transaction for ${amountHumanText} XENI...`;
+      ? `Preparing stake-all transaction for ${amountHumanText} XEN...`
+      : `Preparing stake transaction for ${amountHumanText} XEN...`;
 
     const { Transaction } = await import('https://esm.sh/@iota/iota-sdk/transactions');
     const tx = new Transaction();
@@ -685,18 +836,21 @@ async function executeStakeTx(state, opts = {}) {
     const res = await signer.signAndExecuteTransaction({
       transaction: tx,
       account: session.account,
-      chain: session.chain || CHAIN_ID,
+      chain: CHAIN_ID,
       options: { showEffects: true },
     });
 
     if (statusEl) {
       statusEl.textContent = `Stake submitted. Digest: ${res?.digest || 'submitted'}`;
     }
+    showTxPopup('success', 'Stake submitted', `Stake ${stakeAll ? 'all' : 'amount'} confirmed by wallet.`, res?.digest || '');
 
     await renderStakeCoinOptions(session.address, state);
     await renderStakeList(session.address, state);
   } catch (err) {
-    if (statusEl) statusEl.textContent = `Stake failed: ${err?.message || err}`;
+    const msg = txErrorMessage(err);
+    if (statusEl) statusEl.textContent = `Stake failed: ${msg}`;
+    showTxPopup('error', 'Stake failed', msg);
   } finally {
     if (stakeBtn) stakeBtn.disabled = false;
     if (stakeAllBtn) stakeAllBtn.disabled = (APP_STATE.stakeCoins || []).length === 0;
@@ -711,6 +865,7 @@ async function executeWithdrawTx(state, receiptId, triggerBtn) {
     if (statusEl) statusEl.textContent = 'Connect wallet first.';
     return;
   }
+  if (!ensureNetworkForTx(session, statusEl)) return;
   if (!receiptId) {
     if (statusEl) statusEl.textContent = 'Missing stake receipt id.';
     return;
@@ -739,18 +894,21 @@ async function executeWithdrawTx(state, receiptId, triggerBtn) {
     const res = await signer.signAndExecuteTransaction({
       transaction: tx,
       account: session.account,
-      chain: session.chain || CHAIN_ID,
+      chain: CHAIN_ID,
       options: { showEffects: true },
     });
 
     if (statusEl) {
       statusEl.textContent = `Withdraw submitted. Digest: ${res?.digest || 'submitted'}`;
     }
+    showTxPopup('success', 'Withdraw submitted', 'Stake withdraw transaction sent.', res?.digest || '');
 
     await renderStakeCoinOptions(session.address, state);
     await renderStakeList(session.address, state);
   } catch (err) {
-    if (statusEl) statusEl.textContent = `Withdraw failed: ${err?.message || err}`;
+    const msg = txErrorMessage(err);
+    if (statusEl) statusEl.textContent = `Withdraw failed: ${msg}`;
+    showTxPopup('error', 'Withdraw failed', msg);
   } finally {
     if (triggerBtn) triggerBtn.disabled = false;
   }
@@ -765,6 +923,7 @@ async function executeWithdrawAllStakesTx(state) {
     if (statusEl) statusEl.textContent = 'Connect wallet first.';
     return;
   }
+  if (!ensureNetworkForTx(session, statusEl)) return;
 
   let receipts = APP_STATE.stakeReceipts || [];
   if (!receipts.length) {
@@ -803,16 +962,19 @@ async function executeWithdrawAllStakesTx(state) {
     const res = await signer.signAndExecuteTransaction({
       transaction: tx,
       account: session.account,
-      chain: session.chain || CHAIN_ID,
+      chain: CHAIN_ID,
       options: { showEffects: true },
     });
 
     if (statusEl) statusEl.textContent = `Withdraw-all submitted. Digest: ${res?.digest || 'submitted'}`;
+    showTxPopup('success', 'Withdraw-all submitted', `Sent withdraw-all for ${matured.length} matured stake(s).`, res?.digest || '');
 
     await renderStakeCoinOptions(session.address, state);
     await renderStakeList(session.address, state);
   } catch (err) {
-    if (statusEl) statusEl.textContent = `Withdraw-all failed: ${err?.message || err}`;
+    const msg = txErrorMessage(err);
+    if (statusEl) statusEl.textContent = `Withdraw-all failed: ${msg}`;
+    showTxPopup('error', 'Withdraw-all failed', msg);
   } finally {
     if (withdrawAllBtn) withdrawAllBtn.disabled = false;
   }
@@ -912,19 +1074,18 @@ function syncMintUiState() {
 
   if (!session) {
     mintBtn.disabled = true;
-    mintBtn.textContent = 'Start mint (claim rank)';
+    mintBtn.textContent = 'Start mint';
     claimBtn.disabled = true;
-    claimBtn.textContent = 'Claim all mint rewards';
+    claimBtn.textContent = 'Claim matured mints';
     statusEl.textContent = '';
     return;
   }
 
   // Parallel mint mode: mint can always start; claim button appears for matured receipts.
   mintBtn.disabled = false;
-  mintBtn.textContent = 'Start mint (claim rank)';
+  mintBtn.textContent = 'Start mint';
   claimBtn.disabled = claimable.length === 0;
-  claimBtn.textContent = claimable.length > 1 ? `Claim all mint rewards (${claimable.length})` : 'Claim all mint rewards';
-  statusEl.textContent = '';
+  claimBtn.textContent = claimable.length > 1 ? `Claim matured mints (${claimable.length})` : 'Claim matured mints';
 }
 
 async function executeClaimRankTx(state) {
@@ -937,34 +1098,45 @@ async function executeClaimRankTx(state) {
     if (statusEl) statusEl.textContent = 'Connect wallet first.';
     return;
   }
+  if (!ensureNetworkForTx(session, statusEl)) return;
   if (!termInput) return;
+
+  let receiptsBefore = APP_STATE.activeMintReceipts?.length || 0;
 
   // Refresh local receipt cache before minting (parallel mints allowed by updated contract).
   try {
     const receipts = await loadMintReceipts(session.address, state);
     APP_STATE.activeMintReceipts = receipts;
     APP_STATE.activeMintReceipt = receipts[0] || null;
+    receiptsBefore = receipts.length;
     syncMintUiState();
   } catch (err) {
     if (statusEl) statusEl.textContent = `Mint precheck warning: ${err?.message || err}`;
   }
 
   let termDays = Math.floor(Number(termInput.value || 0));
-  termDays = Math.max(1, Math.min(100, termDays));
+  const maxTermAllowed = Math.max(1, Math.floor(Number(state?.maxTerm || 100)));
+  termDays = Math.max(1, Math.min(maxTermAllowed, termDays));
   termInput.value = String(termDays);
 
   try {
     if (mintBtn) mintBtn.disabled = true;
-    if (statusEl) statusEl.textContent = `Preparing mint tx (term ${termDays} days)...`;
+
+    const feeMist = claimRankFeeMist(termDays);
+    const feeIota = Number(feeMist) / 1_000_000_000;
+    if (statusEl) statusEl.textContent = `Preparing mint tx (term ${termDays} days, fee ${feeIota.toFixed(6)} IOTA)...`;
 
     const { Transaction } = await import('https://esm.sh/@iota/iota-sdk/transactions');
     const tx = new Transaction();
+
+    const feeCoin = tx.splitCoins(tx.gas, [tx.pure.u64(Number(feeMist))]);
 
     tx.moveCall({
       target: `${state.packageId || CHAIN_CONFIG.packageId}::xen::claim_rank`,
       arguments: [
         tx.object(CHAIN_CONFIG.protocolId),
         tx.object(CHAIN_CONFIG.clockId),
+        feeCoin,
         tx.pure.u64(termDays),
       ],
     });
@@ -976,20 +1148,36 @@ async function executeClaimRankTx(state) {
     const res = await signer.signAndExecuteTransaction({
       transaction: tx,
       account: session.account,
-      chain: session.chain || CHAIN_ID,
+      chain: CHAIN_ID,
       options: { showEffects: true },
     });
 
     if (statusEl) statusEl.textContent = `Mint submitted. Digest: ${res?.digest || 'submitted'}`;
+    showTxPopup('success', 'Mint submitted', `Mint rank tx sent (term ${termDays} days, fee ${feeIota.toFixed(6)} IOTA).`, res?.digest || '');
 
-    await renderClaimStatus(session.address, state);
-  } catch (err) {
-    const msg = String(err?.message || err || 'unknown error');
+    await refreshProtocolState(state);
+
+    const synced = await refreshClaimStatusWithRetry(session.address, state, {
+      expectedMinCount: receiptsBefore + 1,
+      retries: 14,
+      delay: 1400,
+      statusEl,
+    });
+
     if (statusEl) {
-      statusEl.textContent = msg.includes('Abort Code: 0')
-        ? 'Mint failed with on-chain Abort 0. This means deployed contract still enforces one active mint per wallet. Parallel mint logic needs contract publish/upgrade.'
-        : `Mint failed: ${msg}`;
+      statusEl.textContent = synced
+        ? 'Mint receipt synced. Pending list updated.'
+        : 'Mint submitted. Receipt indexing is still catching up; list may update in a few seconds.';
     }
+  } catch (err) {
+    const msg = txErrorMessage(err);
+    const pretty = msg.includes('Abort Code: 0')
+      ? 'Mint failed with on-chain Abort 0. Deployed contract is still old-chain/single-active-mint.'
+      : `Mint failed: ${msg}`;
+    if (statusEl) {
+      statusEl.textContent = pretty;
+    }
+    showTxPopup('error', 'Mint failed', pretty);
   } finally {
     if (mintBtn) mintBtn.disabled = false;
     syncMintUiState();
@@ -1005,6 +1193,7 @@ async function executeClaimMintRewardTx(state) {
     if (statusEl) statusEl.textContent = 'Connect wallet first.';
     return;
   }
+  if (!ensureNetworkForTx(session, statusEl)) return;
 
   try {
     if (claimBtn) claimBtn.disabled = true;
@@ -1022,7 +1211,7 @@ async function executeClaimMintRewardTx(state) {
       return;
     }
 
-    if (statusEl) statusEl.textContent = `Preparing claim-all transaction for ${claimable.length} receipt(s)...`;
+    if (statusEl) statusEl.textContent = `Preparing claim transaction for ${claimable.length} matured receipt(s)...`;
 
     const { Transaction } = await import('https://esm.sh/@iota/iota-sdk/transactions');
     const tx = new Transaction();
@@ -1045,16 +1234,19 @@ async function executeClaimMintRewardTx(state) {
     const res = await signer.signAndExecuteTransaction({
       transaction: tx,
       account: session.account,
-      chain: session.chain || CHAIN_ID,
+      chain: CHAIN_ID,
       options: { showEffects: true },
     });
 
-    if (statusEl) statusEl.textContent = `Claim-all submitted. Digest: ${res?.digest || 'submitted'}`;
+    if (statusEl) statusEl.textContent = `Claim submitted. Digest: ${res?.digest || 'submitted'}`;
+    showTxPopup('success', 'Claim submitted', `Claim tx sent for ${claimable.length} matured receipt(s).`, res?.digest || '');
 
     await renderClaimStatus(session.address, state);
     await renderStakeCoinOptions(session.address, state);
   } catch (err) {
-    if (statusEl) statusEl.textContent = `Claim failed: ${err?.message || err}`;
+    const msg = txErrorMessage(err);
+    if (statusEl) statusEl.textContent = `Claim failed: ${msg}`;
+    showTxPopup('error', 'Claim failed', msg);
   } finally {
     if (claimBtn) claimBtn.disabled = false;
     syncMintUiState();
@@ -1068,7 +1260,9 @@ function setupMintUi(state) {
 
   if (termInput && !termInput.dataset.inited) {
     termInput.dataset.inited = '1';
-    const suggested = Math.min(100, Math.max(1, Math.floor(Number(state?.maxTerm || 30))));
+    const maxTermAllowed = Math.max(1, Math.floor(Number(state?.maxTerm || 100)));
+    termInput.max = String(maxTermAllowed);
+    const suggested = Math.min(maxTermAllowed, Math.max(1, Math.floor(Number(termInput.value || 30))));
     termInput.value = String(suggested);
   }
 
@@ -1098,10 +1292,13 @@ async function renderClaimStatus(address, state) {
   if (!address) {
     APP_STATE.activeMintReceipt = null;
     APP_STATE.activeMintReceipts = [];
-    hintEl.textContent = 'Connect wallet to load your mint receipt status.';
+    APP_STATE.pendingViewLimit = 25;
+    stopClaimCountdownTicker();
+    hintEl.textContent = 'Connect wallet to load pending and claimable receipts. Read-only mode still shows protocol parameters above.';
     pendingEl.textContent = '-';
     claimableEl.textContent = '-';
     syncMintUiState();
+    if (APP_STATE.protocol) renderFeeSimulator(APP_STATE.protocol);
     return;
   }
 
@@ -1113,34 +1310,28 @@ async function renderClaimStatus(address, state) {
     APP_STATE.activeMintReceipt = receipts[0] || null;
 
     if (!receipts.length) {
+      APP_STATE.pendingViewLimit = 25;
+      stopClaimCountdownTicker();
       hintEl.textContent = 'No active mint receipt found for this wallet.';
       pendingEl.textContent = 'None';
       claimableEl.textContent = 'None';
       syncMintUiState();
+      renderFeeSimulator(state);
       return;
     }
 
     const pending = receipts.filter((r) => !r.matured);
     const claimable = receipts.filter((r) => r.matured);
 
-    if (pending.length) {
-      const previewN = 2;
-      const lines = pending
-        .slice(0, previewN)
-        .map((r) => {
-          const remainingDays = Math.max(0, Math.ceil((r.maturityMs - Date.now()) / DAY_MS));
-          return `cRank ${fmt(r.cRank)} · term ${fmt(r.termDays)}d · matures in ${fmt(remainingDays)}d`;
-        })
-        .join('<br/>');
-      const more = pending.length > previewN ? `<br/><span class="claim-more">+${fmt(pending.length - previewN)} more</span>` : '';
-      pendingEl.innerHTML = `<div class="claim-warn"><b>${fmt(pending.length)} pending</b></div>${lines}${more}`;
-    } else {
-      pendingEl.textContent = 'None';
-    }
+    const pendingCurrent = pending.filter((r) => r.packageMatch);
+    const pendingLegacy = pending.filter((r) => !r.packageMatch);
+    const claimableCurrent = claimable.filter((r) => r.packageMatch);
+    const claimableLegacy = claimable.filter((r) => !r.packageMatch);
 
-    if (claimable.length) {
+    const renderClaimableChunk = (list, title, toneClass) => {
+      if (!list.length) return '';
       const previewN = 2;
-      const lines = claimable
+      const lines = list
         .slice(0, previewN)
         .map((r) => {
           const daysLate = Math.max(0, Math.floor((Date.now() - r.maturityMs) / DAY_MS));
@@ -1148,8 +1339,83 @@ async function renderClaimStatus(address, state) {
           return `cRank ${fmt(r.cRank)} · term ${fmt(r.termDays)}d · late ${fmt(daysLate)}d · penalty ${penalty}%`;
         })
         .join('<br/>');
-      const more = claimable.length > previewN ? `<br/><span class="claim-more">+${fmt(claimable.length - previewN)} more</span>` : '';
-      claimableEl.innerHTML = `<div class="claim-ok"><b>${fmt(claimable.length)} claimable</b></div>${lines}${more}`;
+      const more = list.length > previewN ? `<br/><span class="claim-more">+${fmt(list.length - previewN)} more</span>` : '';
+      return `<div class="${toneClass}"><b>${fmt(list.length)} ${title}</b></div>${lines}${more}`;
+    };
+
+    if (pending.length) {
+      const pendingSorted = [...pending].sort((a, b) => a.maturityMs - b.maturityMs);
+      const under24hCount = pendingSorted.filter((r) => Math.max(0, r.maturityMs - Date.now()) < DAY_MS).length;
+
+      const viewLimit = Math.max(25, Math.floor(Number(APP_STATE.pendingViewLimit || 25)));
+      const visible = pendingSorted.slice(0, viewLimit);
+      const rows = visible
+        .map((r) => {
+          const remainingMs = Math.max(0, r.maturityMs - Date.now());
+          const eta = remainingMs < DAY_MS
+            ? `in <span class="claim-live" data-live-countdown="1" data-maturity-ms="${r.maturityMs}">${formatClockHms(remainingMs / 1000)}</span>`
+            : `in ${fmt(Math.max(1, Math.ceil(remainingMs / DAY_MS)))}d`;
+
+          const packageTag = r.packageMatch
+            ? ''
+            : '<span class="claim-tag legacy">legacy</span>';
+
+          return `
+            <div class="claim-row">
+              <span class="claim-col-main">cRank ${fmt(r.cRank)}${packageTag ? ` ${packageTag}` : ''}</span>
+              <span class="claim-col-eta">${eta}</span>
+            </div>
+          `;
+        })
+        .join('');
+
+      const remaining = Math.max(0, pendingSorted.length - visible.length);
+      const moreBtn = remaining > 0
+        ? `<div class="claim-more-wrap"><button id="pendingShowMoreBtn" class="btn ghost" type="button">Show ${fmt(Math.min(25, remaining))} more</button></div>`
+        : '';
+
+      const summaryPills = [];
+      if (under24hCount > 0) {
+        summaryPills.push(`<span class="claim-stat-pill hot"><span class="pill-dot" aria-hidden="true"></span>&lt;24h ${fmt(under24hCount)}</span>`);
+      }
+      if (pendingLegacy.length > 0) {
+        summaryPills.push(`<span class="claim-stat-pill legacy">Legacy ${fmt(pendingLegacy.length)}</span>`);
+      }
+      const summaryLine = summaryPills.length
+        ? `<div class="claim-summary-line">${summaryPills.join('')}</div>`
+        : '';
+
+      pendingEl.innerHTML = `
+        <div class="claim-warn"><b>${fmt(pending.length)} pending mint receipts</b></div>
+        ${summaryLine}
+        <div class="claim-list">${rows}</div>
+        ${moreBtn}
+      `;
+
+      const showMoreBtn = pendingEl.querySelector('#pendingShowMoreBtn');
+      if (showMoreBtn) {
+        showMoreBtn.addEventListener('click', async () => {
+          APP_STATE.pendingViewLimit = Math.min(pending.length, viewLimit + 25);
+          await renderClaimStatus(address, state);
+        });
+      }
+
+      ensureClaimCountdownTicker();
+    } else {
+      APP_STATE.pendingViewLimit = 25;
+      pendingEl.textContent = 'None';
+      stopClaimCountdownTicker();
+    }
+
+    if (claimable.length) {
+      const chunks = [];
+      const currentChunk = renderClaimableChunk(claimableCurrent, 'claimable', 'claim-ok');
+      const legacyChunk = renderClaimableChunk(claimableLegacy, 'claimable (legacy package)', 'claim-muted');
+
+      if (currentChunk) chunks.push(currentChunk);
+      if (legacyChunk) chunks.push(legacyChunk);
+
+      claimableEl.innerHTML = chunks.join('<div class="claim-sep"></div>');
     } else {
       claimableEl.textContent = 'None yet';
     }
@@ -1157,18 +1423,22 @@ async function renderClaimStatus(address, state) {
     const pkgMismatches = receipts.filter((r) => !r.packageMatch).length;
     hintEl.textContent = `Found ${fmt(receipts.length)} mint receipt(s): ${fmt(pending.length)} pending, ${fmt(claimable.length)} claimable.`;
     if (pkgMismatches > 0) {
-      hintEl.textContent += ` ${fmt(pkgMismatches)} receipt(s) are from a different package id.`;
+      hintEl.textContent += ` ${fmt(pkgMismatches)} legacy receipt(s) detected.`;
     }
 
     syncMintUiState();
+    renderFeeSimulator(state);
   } catch (err) {
     APP_STATE.activeMintReceipt = null;
     APP_STATE.activeMintReceipts = [];
+    APP_STATE.pendingViewLimit = 25;
+    stopClaimCountdownTicker();
     console.error('Claim status read failed', err);
     hintEl.textContent = 'Claim status read failed. Please reconnect wallet and try again.';
     pendingEl.textContent = 'Unavailable';
     claimableEl.textContent = 'Unavailable';
     syncMintUiState();
+    renderFeeSimulator(state);
   }
 }
 
@@ -1210,6 +1480,8 @@ async function setupWalletConnection(onSessionChange) {
 
   let currentWallet = null;
   let wallets = [];
+  let autoReconnectAttempted = false;
+  let unsubscribeWalletEvents = null;
 
   let getWallets;
   try {
@@ -1221,41 +1493,117 @@ async function setupWalletConnection(onSessionChange) {
 
   const api = getWallets();
 
+  const clearWalletSubscription = () => {
+    try {
+      if (typeof unsubscribeWalletEvents === 'function') unsubscribeWalletEvents();
+    } catch {}
+    unsubscribeWalletEvents = null;
+  };
+
+  const normalizeAddress = (addr) => String(addr || '').trim().toLowerCase();
+
+  const pickPreferredAccount = (target, maybeAccounts) => {
+    const accounts = Array.from(maybeAccounts || target?.accounts || []);
+    if (!accounts.length) return null;
+
+    const preferredAddress = normalizeAddress(safeGet(WALLET_ADDR_KEY));
+    return accounts.find((a) => normalizeAddress(a?.address) === preferredAddress) || accounts[0];
+  };
+
+  const bindWalletEvents = (target) => {
+    clearWalletSubscription();
+    const eventsFeature = target?.features?.['standard:events'];
+    if (!eventsFeature?.on) return;
+
+    unsubscribeWalletEvents = eventsFeature.on('change', ({ accounts }) => {
+      const next = pickPreferredAccount(target, accounts);
+      if (!next) {
+        currentWallet = null;
+        connectBtn.textContent = 'Connect';
+        disconnectBtn.disabled = true;
+        emitSession(null);
+        refresh();
+        return;
+      }
+      activateSession(target, next, { restored: true });
+    });
+  };
+
   const activateSession = (target, acc, { restored = false } = {}) => {
     currentWallet = target;
     connectBtn.textContent = shortAddress(acc.address);
     disconnectBtn.disabled = false;
-    setStatus(restored ? `Reconnected: ${target.name}` : `Connected: ${target.name}`);
+
+    const accountChains = Array.from(acc?.chains || []);
+    const supportsConfiguredChain = accountChains.includes(CHAIN_ID);
+    if (!supportsConfiguredChain) {
+      setStatus(`Connected: ${target.name}. Switch wallet network to ${CHAIN_CONFIG.networkLabel} (${CHAIN_ID}) to transact.`);
+      showTxPopup('error', 'Network mismatch', `This wallet/account is not on ${CHAIN_ID}. Switch network before mint/stake/claim.`);
+    } else {
+      setStatus(restored ? `Reconnected: ${target.name}` : `Connected: ${target.name}`);
+    }
+
+    safeSet(WALLET_AUTO_KEY, '1');
+    safeSet(WALLET_PREF_KEY, target.name || '');
+    safeSet(WALLET_ADDR_KEY, acc.address || '');
+
+    bindWalletEvents(target);
 
     const session = {
       wallet: target,
       account: acc,
       address: acc.address,
-      chain: (Array.from(acc.chains || []).find((c) => String(c).startsWith('iota:')) || CHAIN_ID),
+      chain: CHAIN_ID,
     };
     emitSession(session);
   };
 
-  const refresh = () => {
+  const refresh = async () => {
     wallets = (api.get() || []).filter((w) => Array.from(w.chains || []).some((c) => String(c).startsWith('iota:')));
 
     if (!wallets.length) {
+      clearWalletSubscription();
+      currentWallet = null;
       connectBtn.disabled = false;
       connectBtn.textContent = 'Get IOTA Wallet';
       disconnectBtn.disabled = true;
-      setStatus('No compatible IOTA wallet found. Click "Get IOTA Wallet" to install the extension.');
+      setStatus('No compatible IOTA wallet found. You can still browse in read-only mode, or install the extension to transact.');
       emitSession(null);
       return;
     }
 
-    // Auto-restore on refresh when wallet exposes already-authorized accounts.
+    if (currentWallet && !wallets.some((w) => w.name === currentWallet?.name)) {
+      clearWalletSubscription();
+      currentWallet = null;
+      emitSession(null);
+    }
+
+    // Auto-restore on refresh: first from already-exposed accounts, then silent connect once.
     if (!currentWallet && safeGet(WALLET_AUTO_KEY) === '1') {
       const preferredName = safeGet(WALLET_PREF_KEY);
       const target = wallets.find((w) => w.name === preferredName) || wallets[0];
-      const acc = target?.accounts?.[0];
-      if (target && acc) {
-        activateSession(target, acc, { restored: true });
+      const exposed = pickPreferredAccount(target, target?.accounts);
+      if (target && exposed) {
+        activateSession(target, exposed, { restored: true });
         return;
+      }
+
+      if (!autoReconnectAttempted && target) {
+        autoReconnectAttempted = true;
+        const connectFeature = target.features?.['standard:connect'];
+        if (connectFeature?.connect) {
+          try {
+            setStatus(`Reconnecting: ${target.name}...`);
+            const res = await connectFeature.connect({ silent: true });
+            const rehydrated = pickPreferredAccount(target, res?.accounts || target?.accounts);
+            if (rehydrated) {
+              activateSession(target, rehydrated, { restored: true });
+              return;
+            }
+          } catch {
+            // Ignore silent reconnect failures and fall back to manual connect.
+          }
+        }
       }
     }
 
@@ -1265,7 +1613,7 @@ async function setupWalletConnection(onSessionChange) {
       connectBtn.textContent = 'Connect';
       const primary = wallets[0]?.name || 'wallet';
       const more = wallets.length > 1 ? ` (+${wallets.length - 1} more detected)` : '';
-      setStatus(`Wallet detected: ${primary}${more}. Click Connect.`);
+      setStatus(`Wallet detected: ${primary}${more}. Connect to transact, or keep browsing in read-only mode.`);
     }
   };
 
@@ -1273,7 +1621,7 @@ async function setupWalletConnection(onSessionChange) {
     const target = wallets[0];
     if (!target) {
       window.open(WALLET_DOWNLOAD_URL, '_blank', 'noopener,noreferrer');
-      setStatus('Opened wallet download page. Install the extension, then refresh.');
+      setStatus('Opened wallet download page. Install extension for transactions; read-only mode remains available.');
       return;
     }
 
@@ -1281,11 +1629,10 @@ async function setupWalletConnection(onSessionChange) {
       const connectFeature = target.features?.['standard:connect'];
       if (!connectFeature?.connect) throw new Error('Wallet does not support connect');
       const res = await connectFeature.connect();
-      const acc = res?.accounts?.[0] || target.accounts?.[0];
+      const acc = pickPreferredAccount(target, res?.accounts || target?.accounts);
       if (!acc) throw new Error('No account returned');
 
-      safeSet(WALLET_AUTO_KEY, '1');
-      safeSet(WALLET_PREF_KEY, target.name || '');
+      autoReconnectAttempted = false;
       activateSession(target, acc);
     } catch (e) {
       setStatus(`Connect failed: ${e?.message || e}`);
@@ -1297,20 +1644,27 @@ async function setupWalletConnection(onSessionChange) {
       const f = currentWallet?.features?.['standard:disconnect'];
       if (f?.disconnect) await f.disconnect();
     } finally {
+      clearWalletSubscription();
       currentWallet = null;
+      autoReconnectAttempted = false;
       connectBtn.textContent = 'Connect';
       disconnectBtn.disabled = true;
       emitSession(null);
       safeDel(WALLET_AUTO_KEY);
       safeDel(WALLET_PREF_KEY);
+      safeDel(WALLET_ADDR_KEY);
       refresh();
       if (!wallets.length) setStatus('Disconnected.');
     }
   };
 
-  api.on('register', refresh);
-  api.on('unregister', refresh);
-  refresh();
+  api.on('register', () => {
+    refresh();
+  });
+  api.on('unregister', () => {
+    refresh();
+  });
+  await refresh();
 }
 
 async function main() {
@@ -1354,6 +1708,13 @@ async function main() {
     renderStakeList(address, state);
   });
 
+  if (APP_STATE.protocolPollTimer) {
+    window.clearInterval(APP_STATE.protocolPollTimer);
+  }
+  APP_STATE.protocolPollTimer = window.setInterval(() => {
+    refreshProtocolState(state);
+  }, 12000);
+
   setText('#stamp', `Updated: ${new Date().toLocaleString()}`);
 }
 
@@ -1361,3 +1722,5 @@ main().catch((err) => {
   console.error(err);
   setText('#walletStatus', `Error: ${err?.message || err}`);
 });
+
+

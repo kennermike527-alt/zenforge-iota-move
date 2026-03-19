@@ -1,6 +1,8 @@
 module xen_iota::xen {
     use iota::clock::{Self, Clock};
+    use iota::balance::{Self, Balance};
     use iota::coin::{Self, Coin, TreasuryCap};
+    use iota::iota::IOTA;
     use iota::object::{Self, UID};
     use iota::table::{Self, Table};
     use iota::transfer;
@@ -20,6 +22,10 @@ module xen_iota::xen {
     const BPS_DENOM: u128 = 10_000;
     const U64_MAX_U128: u128 = 18_446_744_073_709_551_615;
 
+    // Claim-rank fee policy (IOTA units in mist: 1 IOTA = 1_000_000_000 mist)
+    const CLAIM_FEE_MIN_MIST: u64 = 5_000_000; // 0.005 IOTA
+    const CLAIM_FEE_MAX_MIST: u64 = 50_000_000; // 0.05 IOTA
+
     const ENoActiveMint: u64 = 1;
     const EInvalidTerm: u64 = 2;
     const ETooEarlyToClaim: u64 = 3;
@@ -29,6 +35,7 @@ module xen_iota::xen {
     const ENoActiveStake: u64 = 7;
     const EOverflow: u64 = 8;
     const EInvalidStakeAmount: u64 = 9;
+    const EInsufficientClaimFee: u64 = 10;
 
     /// One-time witness + token type.
     struct XEN has drop {}
@@ -38,6 +45,7 @@ module xen_iota::xen {
         genesis_ts_ms: u64,
         global_rank: u64,
         treasury: TreasuryCap<XEN>,
+        fee_vault: Balance<IOTA>,
         active_mints: Table<address, u64>,
         active_stakes: Table<address, bool>,
     }
@@ -64,7 +72,7 @@ module xen_iota::xen {
         let (treasury, metadata) = coin::create_currency<XEN>(
             witness,
             18,
-            b"XENI",
+            b"XEN",
             b"XEN on IOTA",
             b"Proof-of-Participation style tokenomics ported to IOTA Move",
             option::none<Url>(),
@@ -78,6 +86,7 @@ module xen_iota::xen {
             genesis_ts_ms: tx_context::epoch_timestamp_ms(ctx),
             global_rank: 0,
             treasury,
+            fee_vault: balance::zero<IOTA>(),
             active_mints: table::new<address, u64>(ctx),
             active_stakes: table::new<address, bool>(ctx),
         };
@@ -85,11 +94,30 @@ module xen_iota::xen {
         transfer::share_object(protocol);
     }
 
-    public entry fun claim_rank(protocol: &mut Protocol, clock: &Clock, term_days: u64, ctx: &mut TxContext) {
+    public entry fun claim_rank(
+        protocol: &mut Protocol,
+        clock: &Clock,
+        fee_payment: Coin<IOTA>,
+        term_days: u64,
+        ctx: &mut TxContext,
+    ) {
         let sender = tx_context::sender(ctx);
 
         let max_term = free_mint_term_limit(protocol.global_rank);
         assert!(term_days >= 1 && term_days <= max_term, EInvalidTerm);
+
+        let fee_required = claim_rank_fee_mist(term_days);
+        let payment = fee_payment;
+        let paid = coin::value(&payment);
+        assert!(paid >= fee_required, EInsufficientClaimFee);
+
+        if (paid > fee_required) {
+            let fee_coin = coin::split(&mut payment, fee_required, ctx);
+            balance::join(&mut protocol.fee_vault, coin::into_balance(fee_coin));
+            transfer_or_destroy_zero_iota(payment, sender);
+        } else {
+            balance::join(&mut protocol.fee_vault, coin::into_balance(payment));
+        };
 
         protocol.global_rank = protocol.global_rank + 1;
         let c_rank = protocol.global_rank;
@@ -240,6 +268,10 @@ module xen_iota::xen {
         current_apy_bps(protocol, clock)
     }
 
+    public fun get_claim_rank_fee_mist(_protocol: &Protocol, term_days: u64): u64 {
+        claim_rank_fee_mist(term_days)
+    }
+
     // ==== Internal helpers ====
 
     fun settle_mint_amount(protocol: &Protocol, clock: &Clock, receipt: &MintReceipt, sender: address): u64 {
@@ -330,6 +362,26 @@ module xen_iota::xen {
         } else {
             transfer::public_transfer(c, recipient);
         };
+    }
+
+    fun transfer_or_destroy_zero_iota(c: Coin<IOTA>, recipient: address) {
+        if (coin::value(&c) == 0) {
+            coin::destroy_zero(c);
+        } else {
+            transfer::public_transfer(c, recipient);
+        };
+    }
+
+    fun claim_rank_fee_mist(term_days: u64): u64 {
+        let day = if (term_days < 1) {
+            1
+        } else if (term_days > 365) {
+            365
+        } else {
+            term_days
+        };
+
+        CLAIM_FEE_MIN_MIST + ((CLAIM_FEE_MAX_MIST - CLAIM_FEE_MIN_MIST) * (365 - day)) / 364
     }
 
     fun free_mint_term_limit(global_rank: u64): u64 {
@@ -480,6 +532,7 @@ module xen_iota::xen {
             genesis_ts_ms: tx_context::epoch_timestamp_ms(ctx),
             global_rank: 0,
             treasury: coin::create_treasury_cap_for_testing<XEN>(ctx),
+            fee_vault: balance::zero<IOTA>(),
             active_mints: table::new<address, u64>(ctx),
             active_stakes: table::new<address, bool>(ctx),
         };
@@ -498,7 +551,7 @@ module xen_iota::xen {
         iota::test_scenario::next_tx(&mut s, alice);
         {
             let p: Protocol = iota::test_scenario::take_shared<Protocol>(&s);
-            claim_rank(&mut p, &clock, 7, iota::test_scenario::ctx(&mut s));
+            claim_rank(&mut p, &clock, coin::mint_for_testing<IOTA>(claim_rank_fee_mist(7), iota::test_scenario::ctx(&mut s)), 7, iota::test_scenario::ctx(&mut s));
             iota::test_scenario::return_shared(p);
         };
 
@@ -528,7 +581,7 @@ module xen_iota::xen {
         iota::test_scenario::next_tx(&mut s, alice);
         {
             let p: Protocol = iota::test_scenario::take_shared<Protocol>(&s);
-            claim_rank(&mut p, &clock, 7, iota::test_scenario::ctx(&mut s));
+            claim_rank(&mut p, &clock, coin::mint_for_testing<IOTA>(claim_rank_fee_mist(7), iota::test_scenario::ctx(&mut s)), 7, iota::test_scenario::ctx(&mut s));
             iota::test_scenario::return_shared(p);
         };
 
@@ -536,14 +589,14 @@ module xen_iota::xen {
         iota::test_scenario::next_tx(&mut s, bob);
         {
             let p: Protocol = iota::test_scenario::take_shared<Protocol>(&s);
-            claim_rank(&mut p, &clock, 1, iota::test_scenario::ctx(&mut s));
+            claim_rank(&mut p, &clock, coin::mint_for_testing<IOTA>(claim_rank_fee_mist(1), iota::test_scenario::ctx(&mut s)), 1, iota::test_scenario::ctx(&mut s));
             iota::test_scenario::return_shared(p);
         };
 
         iota::test_scenario::next_tx(&mut s, carol);
         {
             let p: Protocol = iota::test_scenario::take_shared<Protocol>(&s);
-            claim_rank(&mut p, &clock, 1, iota::test_scenario::ctx(&mut s));
+            claim_rank(&mut p, &clock, coin::mint_for_testing<IOTA>(claim_rank_fee_mist(1), iota::test_scenario::ctx(&mut s)), 1, iota::test_scenario::ctx(&mut s));
             iota::test_scenario::return_shared(p);
         };
 
@@ -654,3 +707,5 @@ module xen_iota::xen {
         iota::test_scenario::end(s);
     }
 }
+
+

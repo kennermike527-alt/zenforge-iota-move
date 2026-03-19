@@ -6,9 +6,9 @@ This package is a first-pass port of the XEN v1.7 litepaper mechanics onto IOTA 
 - GitHub: https://github.com/kennermike527-alt/zenforge-iota-move
 
 ## Current testnet deployment (parallel-mint package)
-- Package: `0xf7ef66f02383e41f4b2ba253a5dfe8033527c4894dbf9f81f5e6f5f0f4724d27`
-- Protocol object: `0x5f89f3838ab94618a38f340350060127cb3a7d359e0f9f77e6f6de64595812cd`
-- Publish tx: `DEQWqNQ9JPebsQf22Aec55M9r2vCPf4FMc8UiB4meUYY`
+- Package: `0x4a146c82ea75b2894da92d52b40d9406bfab7ddc9abf38ff97fd3013190548fd`
+- Protocol object: `0x3fb22d58d2ce2f6c603a64428d37bd164ecad60564a9e823de8c393b5a428678`
+- Publish tx: `A44TELKRdiGESjrxekxjCwsq9ijFbCtkpGb376sminoF`
 
 ## Location
 - `xen-iota-move/move/xen`
@@ -35,11 +35,10 @@ This package is a first-pass port of the XEN v1.7 litepaper mechanics onto IOTA 
   - `0,1,3,8,17,35,72,99` (>=7 days late => 99%)
 - Staking APY:
   - starts at `20%`, decreases by `1%` every `90 days`, floor `2%`
-- UI mint-fee policy simulator (off-chain, for planning):
-  - hard-locked by cRank + selected term (no manual fee override)
+- Claim-rank fee policy (on-chain enforced):
+  - hard-locked by selected term (no manual override)
   - `baseFee(day) = baseMin + ((baseMax - baseMin) * (365 - day)) / 364`
-  - `multiplier = 0.8 + 0.4 * (cRank / globalRank)`
-  - `fee = baseFee * multiplier`
+  - `fee = baseFee(day)`
 
 ## Notes / deviations
 - Uses integer math (basis points) for deterministic Move execution.
@@ -48,7 +47,7 @@ This package is a first-pass port of the XEN v1.7 litepaper mechanics onto IOTA 
 - Active state tracking:
   - mints use a per-address active receipt count (parallel mint receipts allowed)
   - stakes remain single-active per address (guarded by `active_stakes`)
-- Mint-fee simulator shown in web UI is currently a policy preview only and not enforced in on-chain `claim_rank` execution.
+- Mint-fee simulator mirrors the on-chain `claim_rank` fee rule (term-based hard lock).
 
 ## Build
 From workspace root:

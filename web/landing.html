@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>XENFORGE — Landing</title>
+    <title>XENFORGE — XEN v1.7-inspired IOTA Move port (experimental)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Public+Sans:wght@400;500;700;800&display=swap" rel="stylesheet" />
@@ -12,30 +12,35 @@
   <body>
     <main class="shell">
       <section class="hero">
-        <div class="mark-wrap">
-          <span class="mark-glow" aria-hidden="true"></span>
-          <img src="./assets/zenforge-logo-cutout.png" alt="XENFORGE logo" class="mark" />
-        </div>
-        <p class="eyebrow">XENFORGE · IOTA MOVE</p>
-        <h1>Forging value, one mint at a time.</h1>
-        <p class="lead">Mechanics-first interface for protocol readback, claim visibility, fee planning, and staking previews.</p>
+        <div class="hero-grid">
+          <div class="hero-visual">
+            <div class="mark-wrap">
+              <span class="mark-glow" aria-hidden="true"></span>
+              <img src="./assets/zenforge-logo-cutout.png" alt="XENFORGE logo" class="mark" />
+            </div>
+          </div>
 
-        <div class="cta-row">
-          <a class="btn primary" href="./index.html">Enter App</a>
-          <a class="btn ghost" href="./index.html#faq">Read FAQ</a>
-          <a class="btn ghost" href="https://github.com/kennermike527-alt/zenforge-iota-move" target="_blank" rel="noopener noreferrer">GitHub</a>
-        </div>
+          <div class="hero-copy">
+            <h1>Forge XEN. Claim at maturity.</h1>
 
-        <ul class="highlights">
-          <li>Live on-chain metric readback (with fallback visibility)</li>
-          <li>Pending vs claimable status from wallet-connected receipts</li>
-          <li>Mint + Staking tool tabs with clean separation</li>
-        </ul>
+            <div class="cta-row">
+              <a class="btn primary" href="./index.html">Launch App</a>
+              <a class="btn ghost" href="./index.html#faq">How it works</a>
+              <a class="btn ghost" href="https://github.com/kennermike527-alt/zenforge-iota-move" target="_blank" rel="noopener noreferrer">Source</a>
+            </div>
+
+            <p class="cta-note">Experimental and unaudited. Use read-only mode first if you only want to inspect mechanics.</p>
+
+            <ul class="highlights">
+              <li><b>Participation over speculation:</b> capture cRank now, mint at maturity, and avoid late-claim drag.</li>
+              <li><b>Know reward drivers before signing:</b> rank delta, term, AMP/EAA dynamics, and staking APY schedule.</li>
+              <li><b>Truth-labeled UX:</b> on-chain state and simulator outputs are explicitly separated.</li>
+            </ul>
+
+          </div>
+        </div>
       </section>
     </main>
-
-    <div id="cursorGlow" class="cursor-glow" aria-hidden="true"></div>
-    <div id="cursorDot" class="cursor-dot" aria-hidden="true"></div>
 
     <script type="module" src="./landing.js"></script>
   </body>

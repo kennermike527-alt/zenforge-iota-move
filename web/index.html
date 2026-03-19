@@ -23,14 +23,19 @@
         <div class="logo-wrap">
           <img src="./assets/zenforge-logo-cutout.png" alt="XENFORGE logo" class="logo" />
         </div>
-        <p class="sub hero-tagline">Forging value, one mint at a time.</p>
-        <p id="walletStatus" class="subtle">Detecting compatible IOTA wallets…</p>
+        <p class="sub hero-tagline">Forge Xen. Wait the term. Claim your mint.</p>
+        <p id="walletStatus" class="subtle">Connect wallet to sign transactions, or continue read-only to inspect protocol parameters.</p>
       </section>
 
       <section class="card protocol-card">
         <div class="row">
-          <h2>Protocol live data</h2>
+          <h2>Live protocol parameters</h2>
+          <div id="liveFetchBar" class="fetch-bar fetch-inline checking">
+            <span class="dot" aria-hidden="true"></span>
+            <span id="liveFetchText">Checking live chain fetch status…</span>
+          </div>
         </div>
+        <p class="subtle">Values are fetched live when possible. If RPC is unavailable, fallback status is shown explicitly.</p>
 
         <div class="metrics">
           <article>
@@ -46,61 +51,64 @@
             <div id="metricAmp" class="value">-</div>
           </article>
           <article>
-            <div class="label-row"><span class="label">Current yearly reward rate (bps)</span><span class="info-wrap"><span class="info" tabindex="0">i</span><span class="info-tip">Current annual reward rate in basis points (1 bps = 0.01%).</span></span></div>
+            <div class="label-row"><span class="label">Current staking APY</span><span class="info-wrap"><span class="info" tabindex="0">i</span><span class="info-tip">Annual staking rate; fixed when a new stake starts.</span></span></div>
             <div id="metricApy" class="value">-</div>
           </article>
         </div>
         <p id="selectableTermHint" class="subtle"></p>
-        <div id="liveFetchBar" class="fetch-bar checking">
-          <span class="dot" aria-hidden="true"></span>
-          <span id="liveFetchText">Checking live chain fetch status…</span>
-        </div>
       </section>
 
       <section class="card">
-        <h2>My claim status</h2>
-        <p id="claimsHint" class="subtle">Connect wallet to load your mint receipt status.</p>
+        <h2>Your mint receipts</h2>
+        <p id="claimsHint" class="subtle">Connect wallet to load pending and claimable receipts. No keys are stored by this site.</p>
 
         <div class="claims-grid">
           <article class="claim-card">
-            <h3>Pending claims</h3>
+            <h3>Pending mint receipts</h3>
             <div id="pendingClaims" class="claim-body">-</div>
           </article>
           <article class="claim-card">
             <h3>Claimable now</h3>
             <div id="claimableClaims" class="claim-body">-</div>
             <div id="claimActionRow" class="claim-action-row" style="display:none" hidden aria-hidden="true">
-              <button id="claimMintBtn" class="btn primary" type="button" disabled>Claim all mint rewards</button>
+              <button id="claimMintBtn" class="btn primary" type="button" disabled>Claim matured mints</button>
             </div>
           </article>
         </div>
       </section>
 
       <section class="card" id="mintCard">
-        <h2>Mint</h2>
-        <p class="subtle">On-chain mint actions live here. Simulator is in a separate card.</p>
+        <h2>Start a mint (claim rank)</h2>
+        <p class="subtle">Capture your cRank and maturity date on-chain. Claim near maturity to reduce late-claim penalty drag.</p>
 
         <div class="inputs">
-          <label>Mint term (days, max 100 for now)<input id="mintTermDays" type="number" min="1" max="100" step="1" value="30" /></label>
+          <label>Mint term (days)<input id="mintTermDays" type="number" min="1" max="100" step="1" value="30" /></label>
         </div>
+        <p class="subtle">Max term is protocol-controlled and increases with global rank.</p>
 
         <div class="mint-actions">
-          <button id="mintNowBtn" class="btn primary" type="button">Start mint (claim rank)</button>
+          <button id="mintNowBtn" class="btn primary" type="button">Start mint</button>
           <span id="mintTxStatus" class="subtle"></span>
         </div>
       </section>
 
       <section class="card" id="stakingCard">
-        <h2>Staking</h2>
-        <p class="subtle">Stake is on-chain. Input is human XENI units, converted internally to raw units. You can stake a selected amount or all detected coin objects at once.</p>
+        <h2>Stake (optional)</h2>
+        <p class="subtle">Staking is separate from minting. APY is protocol-time based and fixed when your stake starts. XEN here is the token unit used by this IOTA Move implementation (not official Ethereum XEN).</p>
 
         <div class="flow-block">
           <h4 class="flow-title">On-chain staking actions</h4>
+
+          <div class="stake-apy-stat" aria-live="polite">
+            <span class="stake-apy-label">Current APY</span>
+            <strong id="stakeApyBps" class="stake-apy-value">20.00% APY</strong>
+            <span id="stakeApyPct" class="stake-apy-sub">Fixed at stake start</span>
+          </div>
+
           <div class="inputs stake-grid">
-            <label>Current APY (bps)<input id="stakeApyBps" type="number" min="0" step="1" value="2000" readonly /></label>
-            <label>Stake amount (XENI)<input id="stakeAmount" type="text" inputmode="decimal" value="1.0" /></label>
+            <label>Stake amount (XEN)<input id="stakeAmount" type="text" inputmode="decimal" value="1.0" /></label>
             <label>Stake term (days)<input id="stakeTermDays" type="number" min="1" max="1000" step="1" value="365" /></label>
-            <label class="wide">XENI coin object
+            <label class="wide">XEN coin object
               <div class="stake-coin-row">
                 <select id="stakeCoinSelect"></select>
                 <button id="refreshStakeCoins" class="btn ghost" type="button">Refresh</button>
@@ -111,7 +119,7 @@
           <div class="stake-actions">
             <button id="stakeNowBtn" class="btn primary" type="button">Stake now</button>
             <button id="stakeAllBtn" class="btn ghost" type="button">Stake all coins</button>
-            <button id="withdrawAllStakesBtn" class="btn ghost" type="button" disabled>Withdraw all matured</button>
+            <button id="withdrawAllStakesBtn" class="btn ghost" type="button" disabled>Withdraw matured stakes</button>
             <span id="stakeTxStatus" class="subtle"></span>
           </div>
         </div>
@@ -129,13 +137,12 @@
       </section>
 
       <section class="card" id="simulatorCard">
-        <h2>Fee policy simulator</h2>
-        <p class="subtle">Planning-only math sandbox. Fee is hard-locked by cRank + selected term (no manual fee override).</p>
+        <h2>Fee simulator</h2>
+        <p class="subtle">Planning view for the on-chain claim-rank fee rule. It does not execute transactions, but mirrors the enforced term-based fee policy.</p>
 
         <div class="inputs sim-grid">
-          <label>Global rank<input id="simGlobalRank" type="number" min="1" step="1" value="1" /></label>
-          <label>cRank (claim rank)<input id="simCRank" type="number" min="1" step="1" value="1" /></label>
-          <label>Selected term (days, max 100 for now)<input id="simTermDays" type="number" min="1" max="100" step="1" value="30" /></label>
+          <label>Global rank (live)<input id="simGlobalRank" type="number" min="1" step="1" value="1" readonly /></label>
+          <label>Selected term (days)<input id="simTermDays" type="number" min="1" max="100" step="1" value="30" /></label>
           <label>Current AMP (locked)<input id="simAmp" type="number" min="1" step="1" value="3000" readonly /></label>
         </div>
 
@@ -146,68 +153,66 @@
       </section>
 
       <section id="faq" class="card faq-card">
-        <h2>FAQ</h2>
+        <h2>FAQ and glossary</h2>
 
         <details open class="faq-glossary">
-          <summary>XENFORGE terminology glossary</summary>
-          <ul>
-            <li><b>Global rank:</b> Current protocol-wide participant counter used by mint mechanics.</li>
-            <li><b>cRank (claim rank):</b> The rank captured in your mint receipt when you start a mint.</li>
-            <li><b>Term (days):</b> How long your mint is locked before maturity.</li>
-            <li><b>Max selectable term:</b> Highest term currently allowed by rank-based protocol rules.</li>
-            <li><b>AMP:</b> Time-based multiplier that affects reward dynamics (shown as current protocol value).</li>
-            <li><b>APY (bps):</b> Annual reward rate used for staking math, expressed in basis points (100 bps = 1.00%, so 2,000 bps = 20.00%). The percent is applied to staked principal over time. It does not directly set free-mint payout.</li>
-            <li><b>Maturity:</b> Timestamp when a mint receipt becomes eligible to claim.</li>
-            <li><b>Pending claim:</b> Receipt exists but maturity time has not been reached yet.</li>
-            <li><b>Claimable now:</b> Receipt has matured and can be claimed.</li>
-            <li><b>Late penalty:</b> Claim reduction that increases the longer you wait after maturity.</li>
-            <li><b>Mint receipt:</b> On-chain object that stores your mint state (rank, term, maturity, AMP at claim).</li>
-            <li><b>On-chain vs simulation fallback:</b> On-chain = direct RPC readback; fallback = local scenario data when RPC is unavailable.</li>
-            <li><b>Fee policy simulator:</b> Planning tool only; not currently enforced on-chain.</li>
-          </ul>
+          <summary>What is XENFORGE?</summary>
+          <p>XENFORGE is an independent, experimental implementation of XEN v1.7-inspired participation mechanics on IOTA Move. It is built for transparent execution and inspectable economics.</p>
         </details>
 
         <details>
-          <summary>Is there a pre-mint or team allocation here?</summary>
-          <p>No. There is no pre-mint or team allocation in this build.</p>
+          <summary>Is this the official XEN Network app?</summary>
+          <p>No. This is not the official XEN app and is not affiliated with Xenworld LLC or Fair Crypto Foundation.</p>
+        </details>
+
+        <details>
+          <summary>What does "claim rank" actually do?</summary>
+          <p>Starting a mint captures your cRank and maturity schedule on-chain. Your eventual mint outcome depends on rank delta, selected term, protocol multipliers, and claim timing.</p>
         </details>
 
         <details>
           <summary>What determines mint outcomes?</summary>
-          <p>Free-mint outcomes are driven by cRank vs current global rank (rank delta), selected term, AMP at claim, and claim timing/late-penalty band.</p>
+          <p>Core levers are rank delta (global rank minus cRank), term length, AMP/EAA dynamics, and late-claim penalty if claimed after maturity.</p>
         </details>
 
         <details>
-          <summary>Is APY staking-related?</summary>
-          <p>Yes. APY is primarily for staking reward calculations (rate on staked principal over term). Free-mint claim payout uses mint-specific terms (rank delta, term, AMP, and timing).</p>
+          <summary>How does max mint term work?</summary>
+          <p>Max term is protocol-controlled: 100 days until global rank passes 5,000, then it grows with a logarithmic rule.</p>
         </details>
 
         <details>
-          <summary>Why does timing matter?</summary>
-          <p>Timing is a user control lever: claim near maturity to protect value. Waiting longer increases the late-claim reduction band.</p>
+          <summary>What is the late-claim penalty schedule?</summary>
+          <p>Penalty bands: day 0=0%, day 1=1%, day 2=3%, day 3=8%, day 4=17%, day 5=35%, day 6=72%, day 7+=99%.</p>
         </details>
 
         <details>
-          <summary>What is the fee policy simulator for?</summary>
-          <p>It is a planning tool for scenario checks (term, fee range, and outcome context). It is intentionally off-chain and does not execute transactions.</p>
+          <summary>Is APY only for staking?</summary>
+          <p>Yes. APY applies to staking math. Mint outcomes come from mint-specific variables and timing, not staking APY.</p>
         </details>
 
         <details>
-          <summary>What fee formula does mint policy use?</summary>
-          <p>Current policy model hard-locks fee by cRank + term:<br/><code>baseFee(day) = baseMin + ((baseMax - baseMin) × (365 - day)) / 364</code><br/><code>multiplier = 0.8 + 0.4 × (cRank / globalRank)</code><br/><code>fee = baseFee × multiplier</code><br/>No manual fee override in the simulator.</p>
+          <summary>What is XEN here?</summary>
+          <p>XEN is the token unit used by this IOTA Move implementation. It is not official Ethereum XEN.</p>
         </details>
 
         <details>
-          <summary>Is XENFORGE audited?</summary>
-          <p>No. Current build is unaudited and experimental.</p>
+          <summary>What is the fee simulator?</summary>
+          <p>A planning view for the term-based claim-rank fee that is enforced on-chain. It previews the exact fee before you sign.</p>
         </details>
+
+        <details>
+          <summary>Is this audited?</summary>
+          <p>No. Current build is unaudited and experimental. Digital assets are risky and may lose value.</p>
+        </details>
+
+        <p class="subtle">Provided as-is with no warranties. Nothing on this site is financial or investment advice.</p>
       </section>
     </main>
 
-    <div id="cursorGlow" class="cursor-glow" aria-hidden="true"></div>
-    <div id="cursorDot" class="cursor-dot" aria-hidden="true"></div>
     <button id="cursorToggle" class="cursor-toggle" type="button">Cursor FX: On</button>
 
     <script type="module" src="./app.js"></script>
   </body>
 </html>
+
+
